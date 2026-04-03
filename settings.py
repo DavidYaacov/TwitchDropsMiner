@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, TypedDict, TYPE_CHECKING
 
 from yarl import URL
@@ -68,6 +69,21 @@ class Settings:
         self._settings: SettingsFile = json_load(SETTINGS_PATH, default_settings)
         self._args: ParsedArgs = args
         self._altered: bool = False
+
+        # Override with environment variables
+        if os.environ.get('PROXY'):
+            self._settings['proxy'] = URL(os.environ['PROXY'])
+        if os.environ.get('EXCLUDE'):
+            self._settings['exclude'] = set(os.environ['EXCLUDE'].split(','))
+        if os.environ.get('PRIORITY'):
+            self._settings['priority'] = os.environ['PRIORITY'].split(',')
+        if os.environ.get('PRIORITY_MODE'):
+            try:
+                self._settings['priority_mode'] = PriorityMode[os.environ['PRIORITY_MODE'].upper()]
+            except KeyError:
+                pass  # ignore invalid
+        # Language set to English
+        self._settings['language'] = 'English'
 
     # default logic of reading settings is to check args first, then the settings file
     def __getattr__(self, name: str, /) -> Any:

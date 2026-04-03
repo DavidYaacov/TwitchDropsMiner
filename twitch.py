@@ -16,7 +16,13 @@ import aiohttp
 from yarl import URL
 
 from translate import _
-from gui import GUIManager
+try:
+    from gui import GUIManager
+    from headless_gui import HeadlessGUIManager
+except ImportError:
+    # For headless builds without tkinter
+    GUIManager = None
+    from headless_gui import HeadlessGUIManager
 from channel import Channel
 from websocket import WebsocketPool
 from inventory import DropsCampaign
@@ -421,7 +427,7 @@ class _AuthState:
 
 
 class Twitch:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, headless: bool = False):
         self.settings: Settings = settings
         # State management
         self._state: State = State.IDLE
@@ -439,7 +445,12 @@ class Twitch:
         self._session: aiohttp.ClientSession | None = None
         self._auth_state: _AuthState = _AuthState(self)
         # GUI
-        self.gui = GUIManager(self)
+        if headless:
+            self.gui = HeadlessGUIManager(self)
+        elif GUIManager is not None:
+            self.gui = GUIManager(self)
+        else:
+            raise RuntimeError("GUI components not available and not in headless mode")
         # Storing and watching channels
         self.channels: OrderedDict[int, Channel] = OrderedDict()
         self.watching_channel: AwaitableValue[Channel] = AwaitableValue()
@@ -494,6 +505,9 @@ class Twitch:
         if self._mnt_task is not None:
             self._mnt_task.cancel()
             self._mnt_task = None
+        if hasattr(self, '_cron_task') and self._cron_task is not None:
+            self._cron_task.cancel()
+            self._cron_task = None
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -1396,6 +1410,12 @@ class Twitch:
             for response_json in response_list
         }
         return self._merge_data(campaign_ids, fetched_data)
+
+    async def _cron_inventory_check(self):
+        while True:
+            await asyncio.sleep(self._cron_interval)
+            if self._state != State.INVENTORY_FETCH:
+                self.change_state(State.INVENTORY_FETCH)
 
     async def fetch_inventory(self) -> None:
         status_update = self.gui.status.update

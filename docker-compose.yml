@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  twitchdropsminer:
+    build: .
+    environment:
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-30}
+      - EXCLUDE=${EXCLUDE:-}
+      - PROXY=${PROXY:-}
+      - PRIORITY=${PRIORITY:-}
+      - PRIORITY_MODE=${PRIORITY_MODE:-PRIORITY_ONLY}
+    volumes:
+      - ./data:/app/data  # For persistent data like cookies and settings
+    restart: unless-stopped
