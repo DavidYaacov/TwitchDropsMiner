@@ -14,12 +14,6 @@ complete example:
 services:
   twitchdropsminer:
     build: .
-    environment:
-      EXCLUDE: ${EXCLUDE:-}
-      PRIORITY: ${PRIORITY:-}
-      PRIORITY_MODE: ${PRIORITY_MODE:-PRIORITY_ONLY}
-      PROXY: ${PROXY:-}
-      WEB_PORT: 8080
     ports:
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
     volumes:
@@ -55,18 +49,15 @@ docker compose down
 `docker compose down` keeps the named volume. Add `--volumes` only when you
 also want to delete saved cookies, settings, and logs.
 
-## Optional environment settings
+## Manage settings in the web GUI
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `WEB_PORT` | Port used to open the web interface on the host | `8080` |
-| `PRIORITY` | Comma-separated games, in mining priority order | empty |
-| `EXCLUDE` | Comma-separated games that must never be mined | empty |
-| `PRIORITY_MODE` | `PRIORITY_ONLY`, `ENDING_SOONEST`, or `LOW_AVBL_FIRST` | `PRIORITY_ONLY` |
-| `PROXY` | Optional HTTP(S) proxy URL | empty |
+Priority games, excluded games, priority mode, proxy, and advanced mining
+options are managed only from the Settings page. They are saved in the named
+Docker volume and survive container updates and restarts.
 
-These variables override saved values every time the container starts. Leave
-them empty if you want to manage those settings only through the web GUI.
+`WEB_PORT` is optional Compose port substitution, not a miner setting. For
+example, `WEB_PORT=9090 docker compose up -d` publishes the same web GUI at
+`http://localhost:9090` without passing configuration into the container.
 
 ## Docker CLI alternative
 
