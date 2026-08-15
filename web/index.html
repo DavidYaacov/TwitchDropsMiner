@@ -145,7 +145,7 @@
   <script>
     const $=id=>document.getElementById(id);
     const node=(tag,value='',className='')=>{const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;return element};
-    const percent=value=>`${Math.round((Number(value)||0)*100)}%`;
+    const percent=value=>`${((Number(value)||0)*100).toFixed(1).padStart(4,'0')}%`;
     const minutes=value=>{const total=Math.max(0,Number(value)||0),hours=Math.floor(total/60),mins=total%60;return hours?`${hours}h ${mins}m`:`${mins}m`};
     const date=value=>value?new Intl.DateTimeFormat('en',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
     const compact=value=>value==null?'—':Intl.NumberFormat('en',{notation:'compact'}).format(value);
