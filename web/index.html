@@ -205,7 +205,7 @@
     const $=id=>document.getElementById(id);
     const node=(tag,value='',className='')=>{const element=document.createElement(tag);element.textContent=value;if(className)element.className=className;return element};
     const labeledCell=(label,value,className)=>{const cell=node('div','',className);cell.append(node('span',`${label}:`,'campaign-label'),node('span',value));return cell};
-    const percent=value=>`${((Number(value)||0)*100).toFixed(1).padStart(4,'0')}%`;
+    const percent=value=>`${Number(((Number(value)||0)*100).toFixed(1))}%`;
     const durationParts=value=>{const total=Math.max(0,Number(value)||0),whole=Math.floor(total),hours=Math.floor(whole/60),mins=whole%60,seconds=Math.min(59,Math.round((total-whole)*60));return{hours,mins,seconds}};
     const duration=value=>{const {hours,mins}=durationParts(value);return hours?`${hours}h${mins?` ${mins}m`:''}`:`${mins}m`};
     const remaining=value=>{const total=Math.max(0,Math.floor(Number(value)||0)),hours=Math.floor(total/3600),mins=Math.floor(total%3600/60),seconds=total%60,suffix=`${String(seconds).padStart(2,'0')}s`;return hours?`${hours}h ${mins}m ${suffix}`:`${mins}m ${suffix}`};
