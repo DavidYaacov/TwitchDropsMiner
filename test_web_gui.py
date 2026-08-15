@@ -10,6 +10,7 @@ import aiohttp
 from yarl import URL
 
 from constants import PriorityMode, State
+from inventory import DropsCampaign
 from web_gui import WebGUIManager, _Progress
 
 
@@ -59,6 +60,19 @@ class _Twitch:
 
 
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
+    def test_unlinked_override_takes_precedence_over_badge_filter(self):
+        campaign = object.__new__(DropsCampaign)
+        campaign._twitch = SimpleNamespace(
+            settings=SimpleNamespace(
+                mine_unlinked_campaigns=True,
+                enable_badges_emotes=False,
+            )
+        )
+        campaign.linked = False
+        campaign.has_badge_or_emote = True
+
+        self.assertTrue(campaign.eligible)
+
     async def test_ntfy_notification_uses_json_and_bearer_token(self):
         twitch = _Twitch()
         twitch.settings.ntfy_server = "https://notify.example.com"
@@ -168,6 +182,10 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status, 200)
             self.assertEqual(twitch.state, State.RESTART)
             self.assertEqual(gui.snapshot()["settings"]["ntfy_token"], "••••••••")
+            activity = [entry["message"] for entry in gui.snapshot()["activity"]]
+            self.assertIn("Settings: Miner turned off", activity)
+            self.assertIn("Settings: Priority games added: Game A", activity)
+            self.assertIn("Settings: Excluded games added: Game B", activity)
 
             gui.tray._send_ntfy = AsyncMock()
             async with session.post(

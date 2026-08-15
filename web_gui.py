@@ -444,29 +444,73 @@ class WebGUIManager:
         ntfy_enabled = self._boolean(payload.get("ntfy_enabled"), "ntfy_enabled")
         if ntfy_enabled and not ntfy_topic:
             raise web.HTTPBadRequest(text="ntfy topic is required when notifications are enabled")
+        mining_enabled = self._boolean(payload.get("mining_enabled"), "mining_enabled")
+        enable_badges_emotes = self._boolean(
+            payload.get("enable_badges_emotes"), "enable_badges_emotes"
+        )
+        mine_unlinked_campaigns = self._boolean(
+            payload.get("mine_unlinked_campaigns"), "mine_unlinked_campaigns"
+        )
+        available_drops_check = self._boolean(
+            payload.get("available_drops_check"), "available_drops_check"
+        )
 
         settings = self._twitch.settings
+        changes: list[str] = []
+        added_priority = [game for game in priority if game not in settings.priority]
+        removed_priority = [game for game in settings.priority if game not in priority]
+        added_excluded = sorted(set(exclude) - settings.exclude)
+        removed_excluded = sorted(settings.exclude - set(exclude))
+        if added_priority:
+            changes.append(f"Priority games added: {', '.join(added_priority)}")
+        if removed_priority:
+            changes.append(f"Priority games removed: {', '.join(removed_priority)}")
+        if not added_priority and not removed_priority and priority != settings.priority:
+            changes.append(f"Priority game order changed: {', '.join(priority)}")
+        if added_excluded:
+            changes.append(f"Excluded games added: {', '.join(added_excluded)}")
+        if removed_excluded:
+            changes.append(f"Excluded games removed: {', '.join(removed_excluded)}")
+        if priority_mode is not settings.priority_mode:
+            changes.append(
+                f"Priority mode changed: {settings.priority_mode.name} → {priority_mode.name}"
+            )
+        if proxy != settings.proxy:
+            changes.append("Proxy changed")
+        boolean_changes = (
+            ("Miner", settings.mining_enabled, mining_enabled),
+            ("Mine unlinked campaigns", settings.mine_unlinked_campaigns, mine_unlinked_campaigns),
+            ("Badge and emote support", settings.enable_badges_emotes, enable_badges_emotes),
+            ("Available-drops checks", settings.available_drops_check, available_drops_check),
+            ("ntfy notifications", settings.ntfy_enabled, ntfy_enabled),
+        )
+        changes.extend(
+            f"{name} turned {'on' if new else 'off'}"
+            for name, old, new in boolean_changes
+            if old != new
+        )
+        if ntfy_server_text != settings.ntfy_server:
+            changes.append("ntfy server changed")
+        if ntfy_topic != settings.ntfy_topic:
+            changes.append("ntfy topic changed")
+        if ntfy_token != settings.ntfy_token:
+            changes.append("ntfy access token changed")
+
         settings.priority = priority
         settings.exclude = set(exclude)
         settings.priority_mode = priority_mode
         settings.proxy = proxy
-        settings.mining_enabled = self._boolean(
-            payload.get("mining_enabled"), "mining_enabled"
-        )
-        settings.enable_badges_emotes = self._boolean(
-            payload.get("enable_badges_emotes"), "enable_badges_emotes"
-        )
-        settings.mine_unlinked_campaigns = self._boolean(
-            payload.get("mine_unlinked_campaigns"), "mine_unlinked_campaigns"
-        )
-        settings.available_drops_check = self._boolean(
-            payload.get("available_drops_check"), "available_drops_check"
-        )
+        settings.mining_enabled = mining_enabled
+        settings.enable_badges_emotes = enable_badges_emotes
+        settings.mine_unlinked_campaigns = mine_unlinked_campaigns
+        settings.available_drops_check = available_drops_check
         settings.ntfy_server = ntfy_server_text
         settings.ntfy_topic = ntfy_topic
         settings.ntfy_token = ntfy_token
         settings.ntfy_enabled = ntfy_enabled
         settings.save()
+        for change in changes:
+            self.print(f"Settings: {change}")
         self._twitch.change_state(State.RESTART)
         return web.json_response({"ok": True})
 

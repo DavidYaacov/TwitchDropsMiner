@@ -4,7 +4,7 @@ ARG TDM_COMMIT_SHA=unknown
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "aiohttp>=3.9,<4.0" truststore
+RUN pip install --no-cache-dir --root-user-action=ignore "aiohttp>=3.9,<4.0" truststore
 
 COPY . .
 
