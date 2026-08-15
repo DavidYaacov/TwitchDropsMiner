@@ -149,7 +149,7 @@
     const minutes=value=>{const total=Math.max(0,Number(value)||0),hours=Math.floor(total/60),mins=total%60;return hours?`${hours}h ${mins}m`:`${mins}m`};
     const date=value=>value?new Intl.DateTimeFormat('en',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
     const compact=value=>value==null?'—':Intl.NumberFormat('en',{notation:'compact'}).format(value);
-    let latestState,formSettings,errorTimer;
+    let latestState,formSettings,errorTimer,saveTimer;
     function showError(message){const box=$('error');box.textContent=message;box.classList.add('show');clearTimeout(errorTimer);errorTimer=setTimeout(()=>box.classList.remove('show'),5000)}
     function applyTheme(mode){const value=['auto','light','dark'].includes(mode)?mode:'auto';document.documentElement.dataset.theme=value;localStorage.setItem('tdm-theme',value);if($('appearance'))$('appearance').value=value}
     async function api(path,options={}){const response=await fetch(path,options);if(!response.ok)throw new Error((await response.text())||`Request failed (${response.status})`);return response.json()}
@@ -193,7 +193,7 @@
     $('refresh').addEventListener('click',async()=>{const button=$('refresh');button.disabled=true;try{await api('/api/refresh',{method:'POST'});await refreshState()}catch(error){showError(error.message)}finally{button.disabled=false}});
     $('priority-add-button').addEventListener('click',()=>addGame('priority'));$('exclude-add-button').addEventListener('click',()=>addGame('exclude'));
     ['priority','exclude'].forEach(kind=>$(`${kind}-add`).addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addGame(kind)}}));
-    $('settings-form').addEventListener('submit',async event=>{event.preventDefault();const note=$('save-note');note.textContent='Saving…';try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:formSettings.priority,exclude:formSettings.exclude,priority_mode:$('priority-mode').value,proxy:$('proxy').value.trim(),enable_badges_emotes:$('enable-badges-emotes').checked,available_drops_check:$('available-drops-check').checked})});note.textContent='Saved. Miner is restarting…'}catch(error){note.textContent='';showError(error.message)}});
+    $('settings-form').addEventListener('submit',async event=>{event.preventDefault();const note=$('save-note');clearTimeout(saveTimer);note.textContent='Saving…';try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:formSettings.priority,exclude:formSettings.exclude,priority_mode:$('priority-mode').value,proxy:$('proxy').value.trim(),enable_badges_emotes:$('enable-badges-emotes').checked,available_drops_check:$('available-drops-check').checked})});note.textContent='Saved. Settings applied.';saveTimer=setTimeout(()=>{note.textContent=''},3500)}catch(error){note.textContent='';showError(error.message)}});
     showView(['dashboard','inventory','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'dashboard');refreshState();setInterval(refreshState,3000);
   </script>
 </body>
