@@ -27,6 +27,7 @@ class SettingsFile(TypedDict):
     ntfy_server: str
     ntfy_topic: str
     ntfy_token: str
+    ntfy_enabled: bool
 
 
 default_settings: SettingsFile = {
@@ -44,6 +45,7 @@ default_settings: SettingsFile = {
     "ntfy_server": "https://ntfy.sh",
     "ntfy_topic": "",
     "ntfy_token": "",
+    "ntfy_enabled": False,
 }
 
 
@@ -71,6 +73,7 @@ class Settings:
     ntfy_server: str
     ntfy_topic: str
     ntfy_token: str
+    ntfy_enabled: bool
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 

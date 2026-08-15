@@ -29,6 +29,7 @@ class _Settings:
         self.ntfy_server = "https://ntfy.sh"
         self.ntfy_topic = ""
         self.ntfy_token = ""
+        self.ntfy_enabled = False
         self.saved = False
 
     def save(self):
@@ -157,11 +158,31 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                     "ntfy_server": "https://notify.example.com",
                     "ntfy_topic": "drops_private",
                     "ntfy_token": "tk_secret",
+                    "ntfy_enabled": True,
                 },
             ) as response:
                 self.assertEqual(response.status, 200)
             self.assertEqual(twitch.state, State.RESTART)
             self.assertEqual(gui.snapshot()["settings"]["ntfy_token"], "••••••••")
+
+            gui.tray._send_ntfy = AsyncMock()
+            async with session.post(
+                f"http://127.0.0.1:{port}/api/ntfy/test",
+                headers=csrf_headers,
+                json={
+                    "ntfy_server": "https://notify.example.com",
+                    "ntfy_topic": "drops_private",
+                    "ntfy_token": "••••••••",
+                },
+            ) as response:
+                self.assertEqual(response.status, 200)
+            gui.tray._send_ntfy.assert_awaited_once_with(
+                "https://notify.example.com",
+                "drops_private",
+                "tk_secret",
+                "Your ntfy notification settings are working.",
+                "Twitch Drops Miner",
+            )
 
             drop = SimpleNamespace(can_claim=True, claimed=False)
 
@@ -200,6 +221,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(twitch.settings.ntfy_server, "https://notify.example.com")
         self.assertEqual(twitch.settings.ntfy_topic, "drops_private")
         self.assertEqual(twitch.settings.ntfy_token, "tk_secret")
+        self.assertTrue(twitch.settings.ntfy_enabled)
         self.assertTrue(twitch.settings.saved)
         gui.close()
         await gui._server_task

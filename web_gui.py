@@ -105,30 +105,41 @@ class _Tray:
 
     def notify(self, message: str, title: str) -> None:
         self._manager.print(f"{title}: {message.replace(chr(10), ' ')}")
-        if self._manager._twitch.settings.ntfy_topic:
+        if self._manager._twitch.settings.ntfy_enabled:
             asyncio.create_task(self._publish_ntfy(message, title))
 
     async def _publish_ntfy(self, message: str, title: str) -> None:
         settings = self._manager._twitch.settings
-        headers = (
-            {"Authorization": f"Bearer {settings.ntfy_token}"}
-            if settings.ntfy_token
-            else None
-        )
         try:
-            async with ClientSession(timeout=ClientTimeout(total=10)) as session:
-                async with session.post(
-                    settings.ntfy_server,
-                    json={"topic": settings.ntfy_topic, "message": message, "title": title},
-                    headers=headers,
-                ) as response:
-                    if response.status >= 400:
-                        detail = (await response.text())[:200]
-                        logger.error("ntfy notification failed (%s): %s", response.status, detail)
-                    else:
-                        logger.info("ntfy notification sent to topic %s", settings.ntfy_topic)
+            await self._send_ntfy(
+                settings.ntfy_server,
+                settings.ntfy_topic,
+                settings.ntfy_token,
+                message,
+                title,
+            )
+            logger.info("ntfy notification sent to topic %s", settings.ntfy_topic)
         except Exception as exc:
             logger.error("Cannot send ntfy notification: %s", exc)
+
+    @staticmethod
+    async def _send_ntfy(
+        server: str, topic: str, token: str, message: str, title: str
+    ) -> None:
+        headers = (
+            {"Authorization": f"Bearer {token}"}
+            if token
+            else None
+        )
+        async with ClientSession(timeout=ClientTimeout(total=10)) as session:
+            async with session.post(
+                server,
+                json={"topic": topic, "message": message, "title": title},
+                headers=headers,
+            ) as response:
+                if response.status >= 400:
+                    detail = (await response.text())[:200]
+                    raise RuntimeError(f"ntfy rejected the notification ({response.status}): {detail}")
 
 
 class _Progress:
@@ -320,6 +331,7 @@ class WebGUIManager:
                 web.post("/api/auth/reconnect", self._reconnect),
                 web.post("/api/refresh", self._refresh),
                 web.post("/api/settings", self._update_settings),
+                web.post("/api/ntfy/test", self._test_ntfy),
                 web.post("/api/channels/{channel_id}/watch", self._watch_channel),
                 web.post(
                     "/api/campaigns/{campaign_id}/drops/{drop_id}/claim",
@@ -413,6 +425,8 @@ class WebGUIManager:
             payload = await request.json()
         except (ValueError, TypeError) as exc:
             raise web.HTTPBadRequest(text="Expected JSON") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Expected a JSON object")
 
         priority = self._game_list(payload.get("priority"), "priority")
         exclude = self._game_list(payload.get("exclude"), "exclude")
@@ -426,23 +440,10 @@ class WebGUIManager:
         if proxy_text and (proxy.scheme not in ("http", "https") or proxy.host is None):
             raise web.HTTPBadRequest(text="Proxy must be an HTTP(S) URL")
 
-        ntfy_server_text = str(payload.get("ntfy_server", "")).strip().rstrip("/")
-        ntfy_server = URL(ntfy_server_text)
-        if (
-            len(ntfy_server_text) > 2048
-            or ntfy_server.scheme not in ("http", "https")
-            or ntfy_server.host is None
-            or ntfy_server.user is not None
-            or ntfy_server.query
-            or ntfy_server.fragment
-        ):
-            raise web.HTTPBadRequest(text="ntfy server must be an HTTP(S) URL")
-        ntfy_topic = str(payload.get("ntfy_topic", "")).strip()
-        if not NTFY_TOPIC_PATTERN.fullmatch(ntfy_topic):
-            raise web.HTTPBadRequest(text="ntfy topic may contain letters, numbers, _ and -")
-        ntfy_token = str(payload.get("ntfy_token", ""))
-        if len(ntfy_token) > 512:
-            raise web.HTTPBadRequest(text="ntfy token is too long")
+        ntfy_server_text, ntfy_topic, ntfy_token = self._ntfy_config(payload)
+        ntfy_enabled = self._boolean(payload.get("ntfy_enabled"), "ntfy_enabled")
+        if ntfy_enabled and not ntfy_topic:
+            raise web.HTTPBadRequest(text="ntfy topic is required when notifications are enabled")
 
         settings = self._twitch.settings
         settings.priority = priority
@@ -457,11 +458,57 @@ class WebGUIManager:
         )
         settings.ntfy_server = ntfy_server_text
         settings.ntfy_topic = ntfy_topic
-        if ntfy_token != NTFY_TOKEN_MASK:
-            settings.ntfy_token = ntfy_token
+        settings.ntfy_token = ntfy_token
+        settings.ntfy_enabled = ntfy_enabled
         settings.save()
         self._twitch.change_state(State.RESTART)
         return web.json_response({"ok": True})
+
+    async def _test_ntfy(self, request: web.Request) -> web.Response:
+        self._validate_csrf(request)
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="Expected JSON") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Expected a JSON object")
+        server, topic, token = self._ntfy_config(payload)
+        if not topic:
+            raise web.HTTPBadRequest(text="Enter an ntfy topic first")
+        try:
+            await self.tray._send_ntfy(
+                server,
+                topic,
+                token,
+                "Your ntfy notification settings are working.",
+                "Twitch Drops Miner",
+            )
+        except Exception as exc:
+            logger.error("Cannot send ntfy test notification: %s", exc)
+            raise web.HTTPBadGateway(text=str(exc)) from exc
+        return web.json_response({"ok": True})
+
+    def _ntfy_config(self, payload: dict[str, Any]) -> tuple[str, str, str]:
+        server_text = str(payload.get("ntfy_server", "")).strip().rstrip("/")
+        server = URL(server_text)
+        if (
+            len(server_text) > 2048
+            or server.scheme not in ("http", "https")
+            or server.host is None
+            or server.user is not None
+            or server.query
+            or server.fragment
+        ):
+            raise web.HTTPBadRequest(text="ntfy server must be an HTTP(S) URL")
+        topic = str(payload.get("ntfy_topic", "")).strip()
+        if not NTFY_TOPIC_PATTERN.fullmatch(topic):
+            raise web.HTTPBadRequest(text="ntfy topic may contain letters, numbers, _ and -")
+        token = str(payload.get("ntfy_token", ""))
+        if len(token) > 512:
+            raise web.HTTPBadRequest(text="ntfy token is too long")
+        if token == NTFY_TOKEN_MASK:
+            token = self._twitch.settings.ntfy_token
+        return server_text, topic, token
 
     def _validate_csrf(self, request: web.Request) -> None:
         supplied = request.headers.get("X-CSRF-Token", "")
@@ -533,6 +580,7 @@ class WebGUIManager:
                 "ntfy_server": settings.ntfy_server,
                 "ntfy_topic": settings.ntfy_topic,
                 "ntfy_token": NTFY_TOKEN_MASK if settings.ntfy_token else "",
+                "ntfy_enabled": settings.ntfy_enabled,
                 "games": sorted(self._games),
             },
         }
