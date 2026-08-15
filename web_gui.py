@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("TwitchDrops")
+FAVICONS = frozenset({"active", "error", "idle", "maint", "pickaxe"})
 
 
 class _Status:
@@ -198,6 +199,7 @@ class WebGUIManager:
         if not 1 <= self._port <= 65535:
             raise ValueError("WEB_PORT must be between 1 and 65535")
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
+        self._icons_path = Path(__file__).with_name("icons")
         self._activity: deque[dict[str, str]] = deque(maxlen=100)
         self._games: set[str] = set()
         self._claim_lock = asyncio.Lock()
@@ -283,6 +285,7 @@ class WebGUIManager:
         app.add_routes(
             [
                 web.get("/", self._index),
+                web.get("/icons/{icon}.ico", self._favicon),
                 web.get("/api/state", self._get_state),
                 web.post("/api/auth/reconnect", self._reconnect),
                 web.post("/api/refresh", self._refresh),
@@ -322,6 +325,12 @@ class WebGUIManager:
 
     async def _get_state(self, request: web.Request) -> web.Response:
         return web.json_response(self.snapshot())
+
+    async def _favicon(self, request: web.Request) -> web.StreamResponse:
+        icon = request.match_info["icon"]
+        if icon not in FAVICONS:
+            raise web.HTTPNotFound()
+        return web.FileResponse(self._icons_path / f"{icon}.ico")
 
     async def _refresh(self, request: web.Request) -> web.Response:
         self._validate_origin(request)

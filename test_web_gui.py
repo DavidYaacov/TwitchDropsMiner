@@ -108,6 +108,8 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 self.fail("Web GUI did not start")
 
             self.assertEqual(state["campaigns"], [])
+            async with session.get(f"http://127.0.0.1:{port}/icons/active.ico") as response:
+                self.assertEqual(response.status, 200)
             async with session.post(
                 f"http://127.0.0.1:{port}/api/refresh",
                 headers={"Origin": "https://example.com"},
