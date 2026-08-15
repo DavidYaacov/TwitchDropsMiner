@@ -42,12 +42,13 @@
     .panel-body { padding:18px; }
     .dashboard-grid { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; height:clamp(320px,calc(100vh - 400px),560px); min-height:0; align-items:stretch; }
     .dashboard-left,.account-grid { display:grid; gap:16px; min-width:0; min-height:0; }
+    .dashboard-left { align-content:start; }
     .account-grid { grid-template-columns:1fr 1fr; }
     .dashboard-left > .panel:first-child,.channels-panel { min-height:0; }
     .channels-panel { display:flex; flex-direction:column; }
     .channels-panel .panel-head { min-height:64px; }
     .channels-panel .table-wrap { min-height:0; flex:1; overflow:auto; }
-    .activity-panel { height:180px; margin-top:16px; display:flex; flex-direction:column; }
+    .activity-panel { height:260px; margin-top:16px; display:flex; flex-direction:column; }
     .activity-panel .panel-body { min-height:0; flex:1; }
     .mining-grid { display:grid; grid-template-columns:108px minmax(200px,.75fr) minmax(300px,1.25fr); gap:20px; align-items:center; }
     .cover { width:108px; height:142px; object-fit:cover; border-radius:6px; background:var(--surface-2); }
