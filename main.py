@@ -31,7 +31,14 @@ if __name__ == "__main__":
     from version import __version__
     from exceptions import CaptchaRequired
     from utils import lock_file, resource_path, set_root_icon
-    from constants import LOGGING_LEVELS, SELF_PATH, FILE_FORMATTER, LOG_PATH, LOCK_PATH
+    from constants import (
+        LOGGING_LEVELS,
+        SELF_PATH,
+        FILE_FORMATTER,
+        OUTPUT_FORMATTER,
+        LOG_PATH,
+        LOCK_PATH,
+    )
 
     if TYPE_CHECKING:
         from _typeshed import SupportsWrite
@@ -161,6 +168,10 @@ if __name__ == "__main__":
             logging.getLogger().addHandler(logging.NullHandler())
         logger = logging.getLogger("TwitchDrops")
         logger.setLevel(settings.logging_level)
+        if args.headless:
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setFormatter(OUTPUT_FORMATTER)
+            logger.addHandler(handler)
         if settings.log:
             handler = logging.FileHandler(LOG_PATH)
             handler.setFormatter(FILE_FORMATTER)

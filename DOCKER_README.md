@@ -47,6 +47,10 @@ docker compose logs -f
 docker compose down
 ```
 
+The container writes normal startup, Twitch login, WebSocket, channel, claim,
+restart, and error events directly to `docker compose logs` without requiring
+file logging or extra Compose environment variables.
+
 `docker compose down` keeps the named volume. Add `--volumes` only when you
 also want to delete saved cookies, settings, and logs.
 
