@@ -477,6 +477,7 @@ class WebGUIManager:
             "drop_required_minutes": drop.required_minutes,
             "campaign_progress": campaign.progress,
             "campaign_remaining_minutes": campaign.remaining_minutes,
+            "campaign_total_minutes": max(0, (campaign.ends_at - campaign.starts_at).total_seconds() / 60),
             "image_url": str(campaign.image_url),
         }
 
