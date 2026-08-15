@@ -1,8 +1,9 @@
 # Twitch Drops Miner — Docker deployment
 
 The Docker image runs the current miner with an English-only browser interface.
-It exposes mining progress, channel switching, campaign/drop inventory, Twitch
-device login, activity, and Docker-relevant settings at
+It exposes mining progress, channel switching, campaign/drop inventory and
+claiming, Twitch device login and account switching, activity, and
+Docker-relevant settings at
 `http://localhost:8080`.
 
 ## Docker Compose

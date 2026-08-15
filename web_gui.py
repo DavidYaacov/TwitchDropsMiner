@@ -191,6 +191,7 @@ class WebGUIManager:
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
         self._activity: deque[dict[str, str]] = deque(maxlen=100)
         self._games: set[str] = set()
+        self._claim_lock = asyncio.Lock()
 
         self.status = _Status()
         self.websockets = _Websockets()
@@ -274,9 +275,14 @@ class WebGUIManager:
             [
                 web.get("/", self._index),
                 web.get("/api/state", self._get_state),
+                web.post("/api/auth/reconnect", self._reconnect),
                 web.post("/api/refresh", self._refresh),
                 web.post("/api/settings", self._update_settings),
                 web.post("/api/channels/{channel_id}/watch", self._watch_channel),
+                web.post(
+                    "/api/campaigns/{campaign_id}/drops/{drop_id}/claim",
+                    self._claim_drop,
+                ),
             ]
         )
         runner = web.AppRunner(app, access_log=None)
@@ -313,6 +319,13 @@ class WebGUIManager:
         self._twitch.change_state(State.INVENTORY_FETCH)
         return web.json_response({"ok": True})
 
+    async def _reconnect(self, request: web.Request) -> web.Response:
+        self._validate_origin(request)
+        if not await self._twitch.revoke_auth():
+            raise web.HTTPBadGateway(text="Twitch did not revoke the current connection")
+        self.login.update("Logged out", None)
+        return web.json_response({"ok": True})
+
     async def _watch_channel(self, request: web.Request) -> web.Response:
         self._validate_origin(request)
         try:
@@ -323,6 +336,27 @@ class WebGUIManager:
             raise web.HTTPNotFound(text="Channel not found")
         self.channels.selected_id = channel_id
         self._twitch.change_state(State.CHANNEL_SWITCH)
+        return web.json_response({"ok": True})
+
+    async def _claim_drop(self, request: web.Request) -> web.Response:
+        self._validate_origin(request)
+        campaign = next(
+            (
+                campaign
+                for campaign in self._twitch.inventory
+                if campaign.id == request.match_info["campaign_id"]
+            ),
+            None,
+        )
+        drop = campaign.get_drop(request.match_info["drop_id"]) if campaign else None
+        if drop is None:
+            raise web.HTTPNotFound(text="Drop not found")
+        async with self._claim_lock:
+            if not drop.can_claim:
+                raise web.HTTPConflict(text="Drop is not ready to claim")
+            if not await drop.claim():
+                raise web.HTTPBadGateway(text="Twitch did not confirm the claim")
+        self._twitch.change_state(State.INVENTORY_FETCH)
         return web.json_response({"ok": True})
 
     async def _update_settings(self, request: web.Request) -> web.Response:

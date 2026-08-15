@@ -4,7 +4,7 @@ import socket
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import aiohttp
 from yarl import URL
@@ -39,12 +39,17 @@ class _Twitch:
         self.watching_channel = _Value()
         self.state = None
         self.closed = False
+        self.revoked = False
 
     def change_state(self, state):
         self.state = state
 
     def close(self):
         self.closed = True
+
+    async def revoke_auth(self):
+        self.revoked = True
+        return True
 
 
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
@@ -114,15 +119,61 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 },
             ) as response:
                 self.assertEqual(response.status, 200)
+            self.assertEqual(twitch.state, State.RESTART)
+
+            drop = SimpleNamespace(can_claim=True, claimed=False)
+
+            async def claim():
+                drop.claimed = True
+                return True
+
+            drop.claim = claim
+            twitch.inventory = [
+                SimpleNamespace(
+                    id="campaign-1",
+                    get_drop=lambda drop_id: drop if drop_id == "drop-1" else None,
+                )
+            ]
+            async with session.post(
+                f"http://127.0.0.1:{port}/api/campaigns/campaign-1/drops/drop-1/claim"
+            ) as response:
+                self.assertEqual(response.status, 200)
+            self.assertTrue(drop.claimed)
+            self.assertEqual(twitch.state, State.INVENTORY_FETCH)
+
+            gui.login.update("Logged in", 123)
+            async with session.post(
+                f"http://127.0.0.1:{port}/api/auth/reconnect"
+            ) as response:
+                self.assertEqual(response.status, 200)
+            self.assertTrue(twitch.revoked)
+            self.assertIsNone(gui.login.user_id)
 
         self.assertEqual(twitch.settings.priority, ["Game A"])
         self.assertEqual(twitch.settings.exclude, {"Game B"})
-        self.assertEqual(twitch.state, State.RESTART)
         self.assertTrue(twitch.settings.enable_badges_emotes)
         self.assertTrue(twitch.settings.available_drops_check)
         self.assertTrue(twitch.settings.saved)
         gui.close()
         await gui._server_task
+
+
+class TwitchConnectionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_revoke_auth_clears_session_and_restarts(self):
+        from twitch import Twitch
+
+        twitch = object.__new__(Twitch)
+        auth = SimpleNamespace(access_token="token", invalidate=Mock())
+        response_context = MagicMock()
+        response_context.__aenter__.return_value = SimpleNamespace(status=200)
+        twitch._client_type = SimpleNamespace(CLIENT_ID="client")
+        twitch.get_auth = AsyncMock(return_value=auth)
+        twitch.request = Mock(return_value=response_context)
+        twitch.change_state = Mock()
+
+        self.assertTrue(await Twitch.revoke_auth(twitch))
+        auth.invalidate.assert_called_once_with(delete_cookies=True)
+        twitch.change_state.assert_called_once_with(State.RESTART)
 
 
 class EnglishOnlyTest(unittest.TestCase):

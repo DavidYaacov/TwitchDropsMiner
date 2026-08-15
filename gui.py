@@ -2184,20 +2184,7 @@ class HelpTab:
         asyncio.create_task(task_wrapper(self._invalidate_token)())
 
     async def _invalidate_token(self) -> None:
-        auth_state = await self._twitch.get_auth()
-        async with self._twitch.request(
-            "POST",
-            "https://id.twitch.tv/oauth2/revoke",
-            data={
-                "client_id": self._twitch._client_type.CLIENT_ID,
-                "token": auth_state.access_token,
-            }
-        ) as response:
-            if response.status == 200:
-                auth_state.invalidate(delete_cookies=True)
-            else:
-                logger.error(f"Failed to invalidate the auth token: {response.status}")
-        self._twitch.change_state(State.RESTART)
+        await self._twitch.revoke_auth()
 
 
 ##########################################

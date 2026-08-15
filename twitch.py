@@ -536,6 +536,23 @@ class Twitch:
     def wait_until_login(self) -> abc.Coroutine[Any, Any, Literal[True]]:
         return self._auth_state._logged_in.wait()
 
+    async def revoke_auth(self) -> bool:
+        auth_state = await self.get_auth()
+        async with self.request(
+            "POST",
+            "https://id.twitch.tv/oauth2/revoke",
+            data={
+                "client_id": self._client_type.CLIENT_ID,
+                "token": auth_state.access_token,
+            },
+        ) as response:
+            if response.status != 200:
+                logger.error("Failed to revoke the Twitch token: %s", response.status)
+                return False
+        auth_state.invalidate(delete_cookies=True)
+        self.change_state(State.RESTART)
+        return True
+
     def change_state(self, state: State) -> None:
         if self._state is not State.EXIT:
             # prevent state changing once we switch to exit state
