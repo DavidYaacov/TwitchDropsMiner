@@ -18,6 +18,8 @@
     .brand { display:flex; align-items:baseline; gap:9px; white-space:nowrap; }
     .brand strong { font-size:17px; letter-spacing:-.02em; }
     .version { color:var(--muted); font-size:11px; }
+    .build-version { display:grid; gap:2px; }
+    .build-version #commit { font-size:10px; }
     .nav { display:flex; align-self:stretch; gap:4px; }
     .nav button { position:relative; border:0; padding:0 15px; background:transparent; color:var(--muted); cursor:pointer; font-size:13px; font-weight:650; }
     .nav button:hover,.nav button.active { color:var(--text); }
@@ -157,7 +159,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><strong>Twitch Drops Miner</strong><span class="version">Docker <span id="version"></span></span></div>
+    <div class="brand"><strong>Twitch Drops Miner</strong><span class="version build-version"><span>Docker <span id="version"></span></span><span id="commit"></span></span></div>
     <nav class="nav" aria-label="Main navigation"><button type="button" data-view="dashboard">Dashboard</button><button type="button" data-view="inventory">Inventory</button><button type="button" data-view="settings">Settings</button></nav>
     <div class="top-status" role="status" aria-live="polite"><span class="dot" id="connection-dot"></span><span id="connection-text">Connecting</span></div>
   </header>
@@ -236,7 +238,7 @@
     function renderGameList(kind){const root=$(`${kind}-list`),games=formSettings[kind];root.replaceChildren();if(!games.length){root.append(node('div',kind==='priority'?'No priority games.':'No excluded games.','empty'));return}games.forEach((game,index)=>{const row=node('div','','game-row'),actions=node('div','','row-actions');row.append(node('span',kind==='priority'?String(index+1):'—','order'),node('span',game));if(kind==='priority'){const up=node('button','Up'),down=node('button','Down');up.type=down.type='button';up.disabled=index===0;down.disabled=index===games.length-1;up.addEventListener('click',()=>{[games[index-1],games[index]]=[games[index],games[index-1]];renderGameList(kind)});down.addEventListener('click',()=>{[games[index],games[index+1]]=[games[index+1],games[index]];renderGameList(kind)});actions.append(up,down)}const remove=node('button','Remove');remove.type='button';remove.addEventListener('click',()=>{games.splice(index,1);renderGameList(kind)});actions.append(remove);row.append(actions);root.append(row)})}
     function updateGameOptions(games){gameCatalog=games;const root=$('game-options'),current=[...root.options].map(option=>option.value);if(current.length!==games.length||!current.every((game,index)=>game===games[index]))root.replaceChildren(...games.map(game=>{const option=document.createElement('option');option.value=game;return option}));gamePickers.forEach(picker=>picker.refresh())}
     function loadSettings(settings){updateGameOptions(settings.games);if(formSettings)return;formSettings={priority:[...settings.priority],exclude:[...settings.exclude]};$('priority-mode').value=settings.priority_mode;$('proxy').value=settings.proxy;$('enable-badges-emotes').checked=settings.enable_badges_emotes;$('available-drops-check').checked=settings.available_drops_check;$('filter-not-linked').checked=settings.priority_mode==='PRIORITY_ONLY';renderGameList('priority');renderGameList('exclude')}
-    function render(data){latestState=data;$('version').textContent=`v${data.version}`;$('connection-dot').className=`dot ${data.login.connected?'green':'amber'}`;$('connection-text').textContent=data.status||(data.login.connected?'Connected':'Connecting');renderMining(data.mining);renderChannels(data.channels);renderAuth(data.login);renderConnections(data.websockets,data.login.connected);renderActivity(data.activity);renderCampaigns(data.campaigns);loadSettings(data.settings)}
+    function render(data){latestState=data;$('version').textContent=`v${data.version}`;$('commit').textContent=data.commit&&data.commit!=='unknown'?data.commit.slice(0,7):'';$('connection-dot').className=`dot ${data.login.connected?'green':'amber'}`;$('connection-text').textContent=data.status||(data.login.connected?'Connected':'Connecting');renderMining(data.mining);renderChannels(data.channels);renderAuth(data.login);renderConnections(data.websockets,data.login.connected);renderActivity(data.activity);renderCampaigns(data.campaigns);loadSettings(data.settings)}
     async function refreshState(){try{render(await api('/api/state'))}catch(error){showError(`Web GUI disconnected: ${error.message}`)}}
     applyTheme(localStorage.getItem('tdm-theme')||'auto');$('appearance').addEventListener('change',()=>applyTheme($('appearance').value));
     document.querySelectorAll('.nav button').forEach(button=>button.addEventListener('click',()=>showView(button.dataset.view)));

@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ARG TDM_COMMIT_SHA=unknown
+
 WORKDIR /app
 
 RUN pip install --no-cache-dir "aiohttp>=3.9,<4.0" truststore
@@ -13,6 +15,7 @@ RUN useradd --create-home --shell /bin/bash app \
 USER app
 
 ENV TDM_DATA_DIR=/app/data \
+    TDM_COMMIT_SHA=$TDM_COMMIT_SHA \
     TDM_ENGLISH_ONLY=1 \
     PYTHONUNBUFFERED=1 \
     WEB_HOST=0.0.0.0 \

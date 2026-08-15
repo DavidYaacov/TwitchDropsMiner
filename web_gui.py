@@ -424,6 +424,7 @@ class WebGUIManager:
         settings = twitch.settings
         return {
             "version": __version__,
+            "commit": os.environ.get("TDM_COMMIT_SHA", "unknown"),
             "status": self.status.text,
             "icon": self.tray.icon,
             "login": {
