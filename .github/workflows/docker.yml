@@ -44,6 +44,8 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=sha,prefix={{branch}}-
+            type=raw,value=v16.dev,enable=${{ github.ref == 'refs/heads/docker' }}
+            type=sha,prefix=v16.dev-,enable=${{ github.ref == 'refs/heads/docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/docker' }}
 
       - name: Build and push Docker image
