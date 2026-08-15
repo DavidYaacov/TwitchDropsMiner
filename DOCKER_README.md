@@ -1,57 +1,87 @@
-# TwitchDropsMiner Docker Setup
+# Twitch Drops Miner — Docker deployment
 
-This Docker setup runs TwitchDropsMiner in headless mode, supporting environment variable configuration for proxy, exclude lists, priority settings, and periodic drop inventory checks.
+The Docker image runs the current miner with an English-only browser interface.
+It exposes mining progress, channel switching, campaign/drop inventory, Twitch
+device login, activity, and Docker-relevant settings at
+`http://localhost:8080`.
 
-## Environment Variables
+## Docker Compose
 
-- `CRON_SCHEDULE`: Interval in minutes for periodic inventory checks (default: 30)
-- `EXCLUDE`: Comma-separated list of games to exclude (e.g., "Game1,Game2")
-- `PROXY`: Proxy URL (e.g., "http://proxy.example.com:8080")
-- `PRIORITY`: Comma-separated list of priority games
-- `PRIORITY_MODE`: Priority mode, one of "PRIORITY_ONLY", "BLACKLIST", "OFF" (default: "PRIORITY_ONLY")
+The repository includes [`docker-compose.yml`](docker-compose.yml). This is a
+complete example:
 
-## Building and Running
+```yaml
+services:
+  twitchdropsminer:
+    build: .
+    environment:
+      EXCLUDE: ${EXCLUDE:-}
+      PRIORITY: ${PRIORITY:-}
+      PRIORITY_MODE: ${PRIORITY_MODE:-PRIORITY_ONLY}
+      PROXY: ${PROXY:-}
+      WEB_PORT: 8080
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    volumes:
+      - twitchdropsminer-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/state', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
-### Using Docker Compose (Recommended)
-
-1. Build and run:
-   ```bash
-   docker-compose up --build
-   ```
-
-2. On first run, the container will output an activation code. Visit the provided URL and enter the code to activate your device.
-
-3. The container will continue running, performing initial inventory check and periodic checks based on `CRON_SCHEDULE`.
-
-### Using Docker Directly
-
-1. Build the image:
-   ```bash
-   docker build -t twitchdropsminer-light .
-   ```
-
-2. Run the container:
-   ```bash
-   docker run -e CRON_SCHEDULE=30 -e EXCLUDE="Game1,Game2" -v ./data:/app twitchdropsminer-light
-   ```
-
-## Data Persistence
-
-Mount a volume to `/app` to persist cookies, settings, and logs between container restarts.
-
-## Logs
-
-View container logs:
-```bash
-docker-compose logs -f
+volumes:
+  twitchdropsminer-data:
 ```
 
-## Lightweight Build
+Start it from the repository directory:
 
-This Docker image excludes GUI components and uses a stripped-down entry point (`headless_main.py`) for minimal size and dependencies. No tkinter or GUI libraries are included.
+```bash
+docker compose up --build -d
+```
 
-## Notes
+Then open `http://localhost:8080`. On the first run, follow the Twitch
+activation link and enter the device code shown on the Dashboard.
 
-- The application runs in headless mode with console output.
-- Device activation is required on first run.
-- Inventory checks occur on startup and at the specified cron interval.
+View logs or stop the deployment with:
+
+```bash
+docker compose logs -f
+docker compose down
+```
+
+`docker compose down` keeps the named volume. Add `--volumes` only when you
+also want to delete saved cookies, settings, and logs.
+
+## Optional environment settings
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `WEB_PORT` | Port used to open the web interface on the host | `8080` |
+| `PRIORITY` | Comma-separated games, in mining priority order | empty |
+| `EXCLUDE` | Comma-separated games that must never be mined | empty |
+| `PRIORITY_MODE` | `PRIORITY_ONLY`, `ENDING_SOONEST`, or `LOW_AVBL_FIRST` | `PRIORITY_ONLY` |
+| `PROXY` | Optional HTTP(S) proxy URL | empty |
+
+These variables override saved values every time the container starts. Leave
+them empty if you want to manage those settings only through the web GUI.
+
+## Docker CLI alternative
+
+```bash
+docker build -t twitchdropsminer .
+docker run -d --name twitchdropsminer \
+  -p 127.0.0.1:8080:8080 \
+  -v twitchdropsminer-data:/app/data \
+  --restart unless-stopped \
+  twitchdropsminer
+```
+
+## Network safety
+
+The example binds the web GUI to `127.0.0.1`, so it is reachable only from the
+Docker host. The web GUI does not provide its own password prompt. If remote
+access is required, place it behind an authenticated HTTPS reverse proxy or a
+private VPN instead of publishing port `8080` directly to the internet.

@@ -1,5 +1,4 @@
 gui.py
-main.py
 *.bat
 *.sh
 build*
@@ -11,11 +10,13 @@ README.md
 LICENSE
 appimage/
 icons/
+lang/
 .vscode/
 .github/
 .git/
 __pycache__/
 *.pyc
+test_*.py
 *.spec
 .cache/
 *.log

@@ -1,0 +1,507 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+from time import monotonic
+from typing import TYPE_CHECKING, Any
+
+from aiohttp import web
+from yarl import URL
+
+from constants import PriorityMode, State
+from exceptions import ExitRequest
+from version import __version__
+
+if TYPE_CHECKING:
+    from channel import Channel
+    from inventory import DropsCampaign, TimedDrop
+    from twitch import Twitch
+    from utils import Game
+
+
+logger = logging.getLogger("TwitchDrops")
+
+
+class _Status:
+    def __init__(self) -> None:
+        self.text = "Starting"
+
+    def update(self, text: str) -> None:
+        self.text = text
+
+    def clear(self) -> None:
+        self.text = ""
+
+
+class _Websockets:
+    def __init__(self) -> None:
+        self.items: dict[int, dict[str, Any]] = {}
+
+    def update(
+        self, idx: int, status: str | None = None, topics: int | None = None
+    ) -> None:
+        item = self.items.setdefault(idx, {"status": "", "topics": 0})
+        if status is not None:
+            item["status"] = status
+        if topics is not None:
+            item["topics"] = topics
+
+    def remove(self, idx: int) -> None:
+        self.items.pop(idx, None)
+
+
+class _Button:
+    def __init__(self) -> None:
+        self.state = "disabled"
+
+    def config(self, *, state: str) -> None:
+        self.state = state
+
+
+class _Help:
+    def __init__(self) -> None:
+        self._invalidate_button = _Button()
+
+
+class _Login:
+    def __init__(self, manager: WebGUIManager) -> None:
+        self._manager = manager
+        self.status = "Logged out"
+        self.user_id: int | None = None
+        self.verification_uri = ""
+        self.user_code = ""
+
+    async def ask_enter_code(self, verification_uri: URL, user_code: str) -> None:
+        self.verification_uri = str(verification_uri)
+        self.user_code = user_code
+        self._manager.print(f"Open {verification_uri} and enter code {user_code}")
+
+    def update(self, status: str, user_id: int | None = None) -> None:
+        self.status = status
+        self.user_id = user_id
+        if user_id is not None:
+            self.verification_uri = ""
+            self.user_code = ""
+
+
+class _Tray:
+    def __init__(self, manager: WebGUIManager) -> None:
+        self._manager = manager
+        self.icon = "pickaxe"
+
+    def change_icon(self, icon: str) -> None:
+        self.icon = icon
+
+    def notify(self, message: str, title: str) -> None:
+        self._manager.print(f"{title}: {message.replace(chr(10), ' ')}")
+
+
+class _Progress:
+    ALMOST_DONE_SECONDS = 10
+
+    def __init__(self) -> None:
+        self.drop: TimedDrop | None = None
+        self._deadline: float | None = None
+
+    def display(
+        self, drop: TimedDrop | None, *, countdown: bool = True, subone: bool = False
+    ) -> None:
+        self.drop = drop
+        self._deadline = (
+            monotonic() + 60
+            if countdown and drop is not None and drop.remaining_minutes > 0
+            else None
+        )
+
+    def start_timer(self) -> None:
+        if (
+            self.drop is not None
+            and self.drop.remaining_minutes > 0
+            and self._deadline is None
+        ):
+            self._deadline = monotonic() + 60
+
+    def stop_timer(self) -> None:
+        self._deadline = None
+
+    def minute_almost_done(self) -> bool:
+        return self._deadline is None or self._deadline - monotonic() <= self.ALMOST_DONE_SECONDS
+
+
+class _Channels:
+    def __init__(self) -> None:
+        self.items: dict[int, Channel] = {}
+        self.watching_id: int | None = None
+        self.selected_id: int | None = None
+
+    def display(self, channel: Channel, *, add: bool = False) -> None:
+        if add or channel.id in self.items:
+            self.items[channel.id] = channel
+
+    def remove(self, channel: Channel) -> None:
+        self.items.pop(channel.id, None)
+        if self.watching_id == channel.id:
+            self.watching_id = None
+
+    def clear(self) -> None:
+        self.items.clear()
+        self.watching_id = None
+        self.selected_id = None
+
+    def clear_watching(self) -> None:
+        self.watching_id = None
+
+    def set_watching(self, channel: Channel) -> None:
+        self.items[channel.id] = channel
+        self.watching_id = channel.id
+
+    def get_selection(self) -> Channel | None:
+        selected = self.items.get(self.selected_id) if self.selected_id is not None else None
+        self.selected_id = None
+        return selected
+
+
+class _Inventory:
+    async def add_campaign(self, campaign: DropsCampaign) -> None:
+        return None
+
+    def update_drop(self, drop: TimedDrop) -> None:
+        return None
+
+    def clear(self) -> None:
+        return None
+
+
+class WebGUIManager:
+    def __init__(self, twitch: Twitch) -> None:
+        self._twitch = twitch
+        self._close_requested = asyncio.Event()
+        self._server_task: asyncio.Task[None] | None = None
+        self._host = os.environ.get("WEB_HOST", "0.0.0.0")
+        try:
+            self._port = int(os.environ.get("WEB_PORT", "8080"))
+        except ValueError as exc:
+            raise ValueError("WEB_PORT must be a number") from exc
+        if not 1 <= self._port <= 65535:
+            raise ValueError("WEB_PORT must be between 1 and 65535")
+        self._index_path = Path(__file__).with_name("web").joinpath("index.html")
+        self._activity: deque[dict[str, str]] = deque(maxlen=100)
+        self._games: set[str] = set()
+
+        self.status = _Status()
+        self.websockets = _Websockets()
+        self.help = _Help()
+        self.login = _Login(self)
+        self.tray = _Tray(self)
+        self.progress = _Progress()
+        self.channels = _Channels()
+        self.inv = _Inventory()
+
+    @property
+    def close_requested(self) -> bool:
+        return self._close_requested.is_set()
+
+    def start(self) -> None:
+        if self._server_task is None or self._server_task.done():
+            self._server_task = asyncio.create_task(self._serve())
+            self._server_task.add_done_callback(self._server_stopped)
+
+    def _server_stopped(self, task: asyncio.Task[None]) -> None:
+        if not task.cancelled() and (error := task.exception()) is not None:
+            logger.error("Web GUI stopped: %s", error)
+            self.close()
+
+    def stop(self) -> None:
+        if self._server_task is not None and not self._server_task.done():
+            self._server_task.cancel()
+
+    def close_window(self) -> None:
+        return None
+
+    def close(self, *args: Any) -> int:
+        self._close_requested.set()
+        self._twitch.close()
+        return 0
+
+    def prevent_close(self) -> None:
+        self._close_requested.clear()
+
+    async def wait_until_closed(self) -> None:
+        await self._close_requested.wait()
+
+    async def coro_unless_closed(self, coro: Any) -> Any:
+        work = asyncio.ensure_future(coro)
+        closing = asyncio.create_task(self._close_requested.wait())
+        done, pending = await asyncio.wait(
+            (work, closing), return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+        if closing in done:
+            raise ExitRequest()
+        return await work
+
+    def print(self, message: str) -> None:
+        print(message)
+        stamp = datetime.now().astimezone().strftime("%H:%M:%S")
+        for line in str(message).splitlines() or [""]:
+            self._activity.appendleft({"time": stamp, "message": line})
+
+    def save(self, *, force: bool = False) -> None:
+        return None
+
+    def grab_attention(self, *, sound: bool = True) -> None:
+        return None
+
+    def set_games(self, games: set[Game]) -> None:
+        self._games.update(game.name for game in games)
+
+    def display_drop(
+        self, drop: TimedDrop, *, countdown: bool = True, subone: bool = False
+    ) -> None:
+        self.progress.display(drop, countdown=countdown, subone=subone)
+
+    def clear_drop(self) -> None:
+        self.progress.display(None)
+
+    async def _serve(self) -> None:
+        app = web.Application(client_max_size=32 * 1024)
+        app.add_routes(
+            [
+                web.get("/", self._index),
+                web.get("/api/state", self._get_state),
+                web.post("/api/refresh", self._refresh),
+                web.post("/api/settings", self._update_settings),
+                web.post("/api/channels/{channel_id}/watch", self._watch_channel),
+            ]
+        )
+        runner = web.AppRunner(app, access_log=None)
+        await runner.setup()
+        try:
+            await web.TCPSite(runner, self._host, self._port).start()
+            self.print(f"Web GUI available at http://localhost:{self._port}")
+            await self._close_requested.wait()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await runner.cleanup()
+
+    async def _index(self, request: web.Request) -> web.StreamResponse:
+        return web.FileResponse(
+            self._index_path,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Frame-Options": "DENY",
+                "Content-Security-Policy": (
+                    "default-src 'self'; img-src https: data:; "
+                    "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+                    "connect-src 'self'; frame-ancestors 'none'"
+                ),
+            },
+        )
+
+    async def _get_state(self, request: web.Request) -> web.Response:
+        return web.json_response(self.snapshot())
+
+    async def _refresh(self, request: web.Request) -> web.Response:
+        self._validate_origin(request)
+        self._twitch.change_state(State.INVENTORY_FETCH)
+        return web.json_response({"ok": True})
+
+    async def _watch_channel(self, request: web.Request) -> web.Response:
+        self._validate_origin(request)
+        try:
+            channel_id = int(request.match_info["channel_id"])
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid channel") from exc
+        if channel_id not in self.channels.items:
+            raise web.HTTPNotFound(text="Channel not found")
+        self.channels.selected_id = channel_id
+        self._twitch.change_state(State.CHANNEL_SWITCH)
+        return web.json_response({"ok": True})
+
+    async def _update_settings(self, request: web.Request) -> web.Response:
+        self._validate_origin(request)
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="Expected JSON") from exc
+
+        priority = self._game_list(payload.get("priority"), "priority")
+        exclude = self._game_list(payload.get("exclude"), "exclude")
+        try:
+            priority_mode = PriorityMode[str(payload.get("priority_mode", ""))]
+        except KeyError as exc:
+            raise web.HTTPBadRequest(text="Invalid priority mode") from exc
+
+        proxy_text = str(payload.get("proxy", "")).strip()
+        proxy = URL(proxy_text)
+        if proxy_text and (proxy.scheme not in ("http", "https") or proxy.host is None):
+            raise web.HTTPBadRequest(text="Proxy must be an HTTP(S) URL")
+
+        settings = self._twitch.settings
+        settings.priority = priority
+        settings.exclude = set(exclude)
+        settings.priority_mode = priority_mode
+        settings.proxy = proxy
+        settings.enable_badges_emotes = self._boolean(
+            payload.get("enable_badges_emotes"), "enable_badges_emotes"
+        )
+        settings.available_drops_check = self._boolean(
+            payload.get("available_drops_check"), "available_drops_check"
+        )
+        settings.save()
+        self._twitch.change_state(State.RESTART)
+        return web.json_response({"ok": True})
+
+    @staticmethod
+    def _validate_origin(request: web.Request) -> None:
+        if (origin := request.headers.get("Origin")) and URL(origin).authority != request.host:
+            raise web.HTTPForbidden(text="Cross-origin requests are not allowed")
+
+    @staticmethod
+    def _boolean(value: Any, field: str) -> bool:
+        if not isinstance(value, bool):
+            raise web.HTTPBadRequest(text=f"{field} must be true or false")
+        return value
+
+    @staticmethod
+    def _game_list(value: Any, field: str) -> list[str]:
+        if not isinstance(value, list) or len(value) > 100:
+            raise web.HTTPBadRequest(text=f"{field} must be a list")
+        result: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or len(item) > 100:
+                raise web.HTTPBadRequest(text=f"Invalid {field} game")
+            item = item.strip()
+            if item and item not in result:
+                result.append(item)
+        return result
+
+    def snapshot(self) -> dict[str, Any]:
+        twitch = self._twitch
+        watching = twitch.watching_channel.get_with_default(None)
+        drop = self.progress.drop
+        settings = twitch.settings
+        return {
+            "version": __version__,
+            "status": self.status.text,
+            "icon": self.tray.icon,
+            "login": {
+                "status": self.login.status,
+                "connected": self.login.user_id is not None,
+                "user_id": self.login.user_id,
+                "verification_uri": self.login.verification_uri,
+                "user_code": self.login.user_code,
+            },
+            "mining": self._mining(drop, watching),
+            "campaigns": [self._campaign(campaign) for campaign in twitch.inventory],
+            "channels": [
+                {
+                    "id": channel.id,
+                    "name": channel.name,
+                    "online": channel.online,
+                    "pending": channel.pending_online,
+                    "game": str(channel.game or ""),
+                    "viewers": channel.viewers,
+                    "drops_enabled": channel.drops_enabled,
+                    "acl_based": channel.acl_based,
+                    "watching": channel.id == self.channels.watching_id,
+                }
+                for channel in self.channels.items.values()
+            ],
+            "websockets": self.websockets.items,
+            "activity": list(self._activity),
+            "settings": {
+                "priority": list(settings.priority),
+                "exclude": sorted(settings.exclude),
+                "priority_mode": settings.priority_mode.name,
+                "proxy": str(settings.proxy),
+                "enable_badges_emotes": settings.enable_badges_emotes,
+                "available_drops_check": settings.available_drops_check,
+                "games": sorted(self._games),
+            },
+        }
+
+    @staticmethod
+    def _mining(drop: TimedDrop | None, channel: Channel | None) -> dict[str, Any] | None:
+        if drop is None:
+            return None
+        campaign = drop.campaign
+        return {
+            "channel": channel.name if channel is not None else "",
+            "game": campaign.game.name,
+            "campaign": campaign.name,
+            "drop": drop.rewards_text() or drop.name,
+            "drop_progress": drop.progress,
+            "drop_minutes": drop.current_minutes,
+            "drop_required_minutes": drop.required_minutes,
+            "campaign_progress": campaign.progress,
+            "campaign_remaining_minutes": campaign.remaining_minutes,
+            "image_url": str(campaign.image_url),
+        }
+
+    def _campaign(self, campaign: DropsCampaign) -> dict[str, Any]:
+        if campaign.active:
+            status = "active"
+        elif campaign.upcoming:
+            status = "upcoming"
+        else:
+            status = "expired"
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "game": campaign.game.name,
+            "image_url": str(campaign.image_url),
+            "status": status,
+            "eligible": campaign.eligible,
+            "linked": campaign.linked,
+            "link_url": campaign.link_url,
+            "excluded": (
+                campaign.game.name in self._twitch.settings.exclude
+                or self._twitch.settings.priority_mode is PriorityMode.PRIORITY_ONLY
+                and campaign.game.name not in self._twitch.settings.priority
+            ),
+            "finished": campaign.finished,
+            "starts_at": campaign.starts_at.isoformat(),
+            "ends_at": campaign.ends_at.isoformat(),
+            "allowed_channels": [channel.name for channel in campaign.allowed_channels],
+            "claimed": campaign.claimed_drops,
+            "total": campaign.total_drops,
+            "progress": campaign.progress,
+            "drops": [WebGUIManager._drop(drop) for drop in campaign.drops],
+        }
+
+    @staticmethod
+    def _drop(drop: TimedDrop) -> dict[str, Any]:
+        if drop.is_claimed:
+            status = "claimed"
+        elif drop.can_claim:
+            status = "ready"
+        elif drop.current_minutes:
+            status = "in_progress"
+        else:
+            status = "not_started"
+        return {
+            "id": drop.id,
+            "name": drop.name,
+            "status": status,
+            "starts_at": drop.starts_at.isoformat(),
+            "ends_at": drop.ends_at.isoformat(),
+            "current_minutes": drop.current_minutes,
+            "required_minutes": drop.required_minutes,
+            "progress": drop.progress,
+            "benefits": [
+                {
+                    "name": benefit.name,
+                    "image_url": str(benefit.image_url),
+                    "type": benefit.type.value,
+                }
+                for benefit in drop.benefits
+            ],
+        }

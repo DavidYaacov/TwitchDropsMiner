@@ -15,9 +15,12 @@ if __name__ == "__main__":
     import argparse
     import warnings
     import traceback
-    import tkinter as tk
-    from tkinter import messagebox
     from typing import NoReturn, TYPE_CHECKING
+
+    headless_requested = "--headless" in sys.argv
+    if not headless_requested:
+        import tkinter as tk
+        from tkinter import messagebox
 
     import truststore
     truststore.inject_into_ssl()
@@ -59,7 +62,10 @@ if __name__ == "__main__":
             try:
                 super().exit(status, message)  # sys.exit(2)
             finally:
-                messagebox.showerror("Argument Parser Error", self._message.getvalue())
+                if headless_requested:
+                    print(self._message.getvalue())
+                else:
+                    messagebox.showerror("Argument Parser Error", self._message.getvalue())
 
     class ParsedArgs(argparse.Namespace):
         _verbose: int
@@ -97,13 +103,14 @@ if __name__ == "__main__":
             return logging.NOTSET
 
     # handle input parameters
-    # NOTE: parser output is shown via message box
-    # we also need a dummy invisible window for the parser
-    root = tk.Tk()
-    root.overrideredirect(True)
-    root.withdraw()
-    set_root_icon(root, resource_path("icons/pickaxe.ico"))
-    root.update()
+    # Desktop parser output is shown via a message box, which needs a hidden window.
+    root = None
+    if not headless_requested:
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.withdraw()
+        set_root_icon(root, resource_path("icons/pickaxe.ico"))
+        root.update()
     parser = Parser(
         SELF_PATH.name,
         description="A program that allows you to mine timed drops on Twitch.",
@@ -126,13 +133,15 @@ if __name__ == "__main__":
     try:
         settings = Settings(args)
     except Exception:
-        messagebox.showerror(
-            "Settings error",
-            f"There was an error while loading the settings file:\n\n{traceback.format_exc()}"
-        )
+        error = f"There was an error while loading the settings file:\n\n{traceback.format_exc()}"
+        if headless_requested:
+            print(error)
+        else:
+            messagebox.showerror("Settings error", error)
         sys.exit(4)
     # dummy window isn't needed anymore
-    root.destroy()
+    if root is not None:
+        root.destroy()
     # get rid of unneeded objects
     del root, parser
 

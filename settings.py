@@ -70,20 +70,23 @@ class Settings:
         self._args: ParsedArgs = args
         self._altered: bool = False
 
+        if os.environ.get("TDM_ENGLISH_ONLY") == "1":
+            self._settings["language"] = DEFAULT_LANG
+
         # Override with environment variables
-        if os.environ.get('PROXY'):
-            self._settings['proxy'] = URL(os.environ['PROXY'])
-        if os.environ.get('EXCLUDE'):
-            self._settings['exclude'] = set(os.environ['EXCLUDE'].split(','))
-        if os.environ.get('PRIORITY'):
-            self._settings['priority'] = os.environ['PRIORITY'].split(',')
-        if os.environ.get('PRIORITY_MODE'):
+        if proxy := os.environ.get("PROXY"):
+            self._settings["proxy"] = URL(proxy)
+        if exclude := os.environ.get("EXCLUDE"):
+            self._settings["exclude"] = {game.strip() for game in exclude.split(",") if game.strip()}
+        if priority := os.environ.get("PRIORITY"):
+            self._settings["priority"] = [
+                game.strip() for game in priority.split(",") if game.strip()
+            ]
+        if priority_mode := os.environ.get("PRIORITY_MODE"):
             try:
-                self._settings['priority_mode'] = PriorityMode[os.environ['PRIORITY_MODE'].upper()]
+                self._settings["priority_mode"] = PriorityMode[priority_mode.upper()]
             except KeyError:
-                pass  # ignore invalid
-        # Language set to English
-        self._settings['language'] = 'English'
+                pass
 
     # default logic of reading settings is to check args first, then the settings file
     def __getattr__(self, name: str, /) -> Any:

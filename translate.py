@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import abc
 from typing import Any, TypedDict, TYPE_CHECKING
 
@@ -451,21 +452,23 @@ default_translation: Translation = {
 
 class Translator:
     def __init__(self) -> None:
-        self._langs: list[str] = []
+        english_only = os.environ.get("TDM_ENGLISH_ONLY") == "1"
+        self._langs: list[str] = [DEFAULT_LANG] if english_only else []
         # start with (and always copy) the default translation
         self._translation: Translation = default_translation.copy()
         # if we're in dev, update the template English.json file
-        if not IS_PACKAGED:
+        if not IS_PACKAGED and not english_only:
             default_langpath = LANG_PATH.joinpath(f"{DEFAULT_LANG}.json")
             json_save(default_langpath, default_translation)
         self._translation["language_name"] = DEFAULT_LANG
         # load available translation names
-        for filepath in LANG_PATH.glob("*.json"):
-            self._langs.append(filepath.stem)
-        self._langs.sort()
-        if DEFAULT_LANG in self._langs:
-            self._langs.remove(DEFAULT_LANG)
-        self._langs.insert(0, DEFAULT_LANG)
+        if not english_only:
+            for filepath in LANG_PATH.glob("*.json"):
+                self._langs.append(filepath.stem)
+            self._langs.sort()
+            if DEFAULT_LANG in self._langs:
+                self._langs.remove(DEFAULT_LANG)
+            self._langs.insert(0, DEFAULT_LANG)
 
     @property
     def languages(self) -> abc.Iterable[str]:
