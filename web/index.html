@@ -135,6 +135,7 @@
       .select-wrapper select option { padding:8px 9px; border-radius:4px; background:transparent; color:var(--text); font-size:12px; }
       .select-wrapper select option:hover,.select-wrapper select option:focus { background:var(--surface-2); }
       .select-wrapper select option:checked { background:color-mix(in srgb,var(--accent) 22%,transparent); }
+      .select-wrapper select option::checkmark { display:none; content:none; }
     }
     .game-list { display:grid; border:1px solid var(--border); border-radius:7px; overflow:hidden; }
     .game-row { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:10px; min-height:44px; padding:7px 10px; border-bottom:1px solid var(--border); font-size:12px; }
