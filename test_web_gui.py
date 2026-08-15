@@ -26,6 +26,9 @@ class _Settings:
         self.proxy = URL()
         self.enable_badges_emotes = False
         self.available_drops_check = False
+        self.ntfy_server = "https://ntfy.sh"
+        self.ntfy_topic = ""
+        self.ntfy_token = ""
         self.saved = False
 
     def save(self):
@@ -53,6 +56,31 @@ class _Twitch:
 
 
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
+    async def test_ntfy_notification_uses_json_and_bearer_token(self):
+        twitch = _Twitch()
+        twitch.settings.ntfy_server = "https://notify.example.com"
+        twitch.settings.ntfy_topic = "drops_private"
+        twitch.settings.ntfy_token = "tk_secret"
+        gui = WebGUIManager(twitch)
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        response = MagicMock(status=200)
+        response.__aenter__ = AsyncMock(return_value=response)
+        session.post.return_value = response
+
+        with patch("web_gui.ClientSession", return_value=session):
+            await gui.tray._publish_ntfy("Reward claimed", "Mined Drop")
+
+        session.post.assert_called_once_with(
+            "https://notify.example.com",
+            json={
+                "topic": "drops_private",
+                "message": "Reward claimed",
+                "title": "Mined Drop",
+            },
+            headers={"Authorization": "Bearer tk_secret"},
+        )
+
     def test_progress_exposes_live_remaining_seconds(self):
         progress = _Progress()
         progress._deadline = 160
@@ -124,10 +152,14 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                     "proxy": "http://proxy.example:8080",
                     "enable_badges_emotes": True,
                     "available_drops_check": True,
+                    "ntfy_server": "https://notify.example.com",
+                    "ntfy_topic": "drops_private",
+                    "ntfy_token": "tk_secret",
                 },
             ) as response:
                 self.assertEqual(response.status, 200)
             self.assertEqual(twitch.state, State.RESTART)
+            self.assertEqual(gui.snapshot()["settings"]["ntfy_token"], "••••••••")
 
             drop = SimpleNamespace(can_claim=True, claimed=False)
 
@@ -161,6 +193,9 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(twitch.settings.exclude, {"Game B"})
         self.assertTrue(twitch.settings.enable_badges_emotes)
         self.assertTrue(twitch.settings.available_drops_check)
+        self.assertEqual(twitch.settings.ntfy_server, "https://notify.example.com")
+        self.assertEqual(twitch.settings.ntfy_topic, "drops_private")
+        self.assertEqual(twitch.settings.ntfy_token, "tk_secret")
         self.assertTrue(twitch.settings.saved)
         gui.close()
         await gui._server_task

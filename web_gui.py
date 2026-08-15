@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from collections import deque
 from datetime import datetime
 from math import ceil
@@ -10,7 +11,7 @@ from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 from yarl import URL
 
 from constants import PriorityMode, State
@@ -26,6 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("TwitchDrops")
 FAVICONS = frozenset({"active", "error", "idle", "maint", "pickaxe"})
+NTFY_TOKEN_MASK = "••••••••"
+NTFY_TOPIC_PATTERN = re.compile(r"[A-Za-z0-9_-]{0,64}")
 
 
 class _Status:
@@ -100,6 +103,30 @@ class _Tray:
 
     def notify(self, message: str, title: str) -> None:
         self._manager.print(f"{title}: {message.replace(chr(10), ' ')}")
+        if self._manager._twitch.settings.ntfy_topic:
+            asyncio.create_task(self._publish_ntfy(message, title))
+
+    async def _publish_ntfy(self, message: str, title: str) -> None:
+        settings = self._manager._twitch.settings
+        headers = (
+            {"Authorization": f"Bearer {settings.ntfy_token}"}
+            if settings.ntfy_token
+            else None
+        )
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=10)) as session:
+                async with session.post(
+                    settings.ntfy_server,
+                    json={"topic": settings.ntfy_topic, "message": message, "title": title},
+                    headers=headers,
+                ) as response:
+                    if response.status >= 400:
+                        detail = (await response.text())[:200]
+                        logger.error("ntfy notification failed (%s): %s", response.status, detail)
+                    else:
+                        logger.info("ntfy notification sent to topic %s", settings.ntfy_topic)
+        except Exception as exc:
+            logger.error("Cannot send ntfy notification: %s", exc)
 
 
 class _Progress:
@@ -396,6 +423,24 @@ class WebGUIManager:
         if proxy_text and (proxy.scheme not in ("http", "https") or proxy.host is None):
             raise web.HTTPBadRequest(text="Proxy must be an HTTP(S) URL")
 
+        ntfy_server_text = str(payload.get("ntfy_server", "")).strip().rstrip("/")
+        ntfy_server = URL(ntfy_server_text)
+        if (
+            len(ntfy_server_text) > 2048
+            or ntfy_server.scheme not in ("http", "https")
+            or ntfy_server.host is None
+            or ntfy_server.user is not None
+            or ntfy_server.query
+            or ntfy_server.fragment
+        ):
+            raise web.HTTPBadRequest(text="ntfy server must be an HTTP(S) URL")
+        ntfy_topic = str(payload.get("ntfy_topic", "")).strip()
+        if not NTFY_TOPIC_PATTERN.fullmatch(ntfy_topic):
+            raise web.HTTPBadRequest(text="ntfy topic may contain letters, numbers, _ and -")
+        ntfy_token = str(payload.get("ntfy_token", ""))
+        if len(ntfy_token) > 512:
+            raise web.HTTPBadRequest(text="ntfy token is too long")
+
         settings = self._twitch.settings
         settings.priority = priority
         settings.exclude = set(exclude)
@@ -407,6 +452,10 @@ class WebGUIManager:
         settings.available_drops_check = self._boolean(
             payload.get("available_drops_check"), "available_drops_check"
         )
+        settings.ntfy_server = ntfy_server_text
+        settings.ntfy_topic = ntfy_topic
+        if ntfy_token != NTFY_TOKEN_MASK:
+            settings.ntfy_token = ntfy_token
         settings.save()
         self._twitch.change_state(State.RESTART)
         return web.json_response({"ok": True})
@@ -477,6 +526,9 @@ class WebGUIManager:
                 "proxy": str(settings.proxy),
                 "enable_badges_emotes": settings.enable_badges_emotes,
                 "available_drops_check": settings.available_drops_check,
+                "ntfy_server": settings.ntfy_server,
+                "ntfy_topic": settings.ntfy_topic,
+                "ntfy_token": NTFY_TOKEN_MASK if settings.ntfy_token else "",
                 "games": sorted(self._games),
             },
         }

@@ -56,9 +56,15 @@ also want to delete saved cookies, settings, and logs.
 
 ## Manage settings in the web GUI
 
-Priority games, excluded games, priority mode, proxy, and advanced mining
-options are managed only from the Settings page. They are saved in the named
-Docker volume and survive container updates and restarts.
+Priority games, excluded games, priority mode, proxy, advanced mining options,
+and ntfy notifications are managed only from the Settings page. They are saved
+in the named Docker volume and survive container updates and restarts.
+
+For ntfy, enter the server URL (such as `https://ntfy.sh`), the subscribed
+topic, and an optional access token. The miner sends the same notification as
+the desktop GUI after Twitch confirms that a drop was successfully claimed.
+This includes automatic claims and claims started from the Inventory page.
+Leave the topic empty to disable ntfy notifications.
 
 `WEB_PORT` is optional Compose port substitution, not a miner setting. For
 example, `WEB_PORT=9090 docker compose up -d` publishes the same web GUI at
