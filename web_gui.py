@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import re
@@ -8,6 +9,7 @@ from collections import deque
 from datetime import datetime
 from math import ceil
 from pathlib import Path
+from secrets import token_urlsafe
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
@@ -227,6 +229,7 @@ class WebGUIManager:
             raise ValueError("WEB_PORT must be between 1 and 65535")
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
         self._icons_path = Path(__file__).with_name("icons")
+        self._csrf_token = token_urlsafe(32)
         self._activity: deque[dict[str, str]] = deque(maxlen=100)
         self._games: set[str] = set()
         self._claim_lock = asyncio.Lock()
@@ -351,7 +354,7 @@ class WebGUIManager:
         )
 
     async def _get_state(self, request: web.Request) -> web.Response:
-        return web.json_response(self.snapshot())
+        return web.json_response(self.snapshot(), headers={"Cache-Control": "no-store"})
 
     async def _favicon(self, request: web.Request) -> web.StreamResponse:
         icon = request.match_info["icon"]
@@ -360,19 +363,19 @@ class WebGUIManager:
         return web.FileResponse(self._icons_path / f"{icon}.ico")
 
     async def _refresh(self, request: web.Request) -> web.Response:
-        self._validate_origin(request)
+        self._validate_csrf(request)
         self._twitch.change_state(State.INVENTORY_FETCH)
         return web.json_response({"ok": True})
 
     async def _reconnect(self, request: web.Request) -> web.Response:
-        self._validate_origin(request)
+        self._validate_csrf(request)
         if not await self._twitch.revoke_auth():
             raise web.HTTPBadGateway(text="Twitch did not revoke the current connection")
         self.login.update("Logged out", None)
         return web.json_response({"ok": True})
 
     async def _watch_channel(self, request: web.Request) -> web.Response:
-        self._validate_origin(request)
+        self._validate_csrf(request)
         try:
             channel_id = int(request.match_info["channel_id"])
         except ValueError as exc:
@@ -384,7 +387,7 @@ class WebGUIManager:
         return web.json_response({"ok": True})
 
     async def _claim_drop(self, request: web.Request) -> web.Response:
-        self._validate_origin(request)
+        self._validate_csrf(request)
         campaign = next(
             (
                 campaign
@@ -405,7 +408,7 @@ class WebGUIManager:
         return web.json_response({"ok": True})
 
     async def _update_settings(self, request: web.Request) -> web.Response:
-        self._validate_origin(request)
+        self._validate_csrf(request)
         try:
             payload = await request.json()
         except (ValueError, TypeError) as exc:
@@ -460,10 +463,10 @@ class WebGUIManager:
         self._twitch.change_state(State.RESTART)
         return web.json_response({"ok": True})
 
-    @staticmethod
-    def _validate_origin(request: web.Request) -> None:
-        if (origin := request.headers.get("Origin")) and URL(origin).authority != request.host:
-            raise web.HTTPForbidden(text="Cross-origin requests are not allowed")
+    def _validate_csrf(self, request: web.Request) -> None:
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not hmac.compare_digest(supplied, self._csrf_token):
+            raise web.HTTPForbidden(text="Invalid request token; reload the web page")
 
     @staticmethod
     def _boolean(value: Any, field: str) -> bool:
@@ -491,6 +494,7 @@ class WebGUIManager:
         settings = twitch.settings
         return {
             "version": __version__,
+            "csrf_token": self._csrf_token,
             "commit": os.environ.get("TDM_COMMIT_SHA", "unknown"),
             "status": self.status.text,
             "icon": self.tray.icon,

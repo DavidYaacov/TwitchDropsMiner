@@ -136,6 +136,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 self.fail("Web GUI did not start")
 
             self.assertEqual(state["campaigns"], [])
+            csrf_headers = {"X-CSRF-Token": state["csrf_token"]}
             async with session.get(f"http://127.0.0.1:{port}/icons/active.ico") as response:
                 self.assertEqual(response.status, 200)
             async with session.post(
@@ -145,6 +146,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status, 403)
             async with session.post(
                 f"http://127.0.0.1:{port}/api/settings",
+                headers=csrf_headers,
                 json={
                     "priority": ["Game A"],
                     "exclude": ["Game B"],
@@ -175,7 +177,8 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                 )
             ]
             async with session.post(
-                f"http://127.0.0.1:{port}/api/campaigns/campaign-1/drops/drop-1/claim"
+                f"http://127.0.0.1:{port}/api/campaigns/campaign-1/drops/drop-1/claim",
+                headers=csrf_headers,
             ) as response:
                 self.assertEqual(response.status, 200)
             self.assertTrue(drop.claimed)
@@ -183,7 +186,8 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
 
             gui.login.update("Logged in", 123)
             async with session.post(
-                f"http://127.0.0.1:{port}/api/auth/reconnect"
+                f"http://127.0.0.1:{port}/api/auth/reconnect",
+                headers=csrf_headers,
             ) as response:
                 self.assertEqual(response.status, 200)
             self.assertTrue(twitch.revoked)
