@@ -10,7 +10,7 @@ import aiohttp
 from yarl import URL
 
 from constants import PriorityMode, State
-from web_gui import WebGUIManager
+from web_gui import WebGUIManager, _Progress
 
 
 class _Value:
@@ -53,6 +53,12 @@ class _Twitch:
 
 
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
+    def test_progress_exposes_live_remaining_seconds(self):
+        progress = _Progress()
+        progress._deadline = 160
+        with patch("web_gui.monotonic", return_value=101):
+            self.assertEqual(progress.remaining_seconds(5), 299)
+
     def test_campaign_snapshot_contains_drop_details(self):
         twitch = _Twitch()
         gui = WebGUIManager(twitch)

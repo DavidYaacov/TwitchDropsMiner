@@ -5,6 +5,7 @@ import logging
 import os
 from collections import deque
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any
@@ -130,6 +131,14 @@ class _Progress:
 
     def minute_almost_done(self) -> bool:
         return self._deadline is None or self._deadline - monotonic() <= self.ALMOST_DONE_SECONDS
+
+    def remaining_seconds(self, minutes: int) -> int:
+        if minutes <= 0:
+            return 0
+        if self._deadline is None:
+            return minutes * 60
+        seconds = min(60, max(0, ceil(self._deadline - monotonic())))
+        return (minutes - (seconds < 60)) * 60 + seconds % 60
 
 
 class _Channels:
@@ -463,8 +472,7 @@ class WebGUIManager:
             },
         }
 
-    @staticmethod
-    def _mining(drop: TimedDrop | None, channel: Channel | None) -> dict[str, Any] | None:
+    def _mining(self, drop: TimedDrop | None, channel: Channel | None) -> dict[str, Any] | None:
         if drop is None:
             return None
         campaign = drop.campaign
@@ -476,8 +484,10 @@ class WebGUIManager:
             "drop_progress": drop.progress,
             "drop_minutes": drop.current_minutes,
             "drop_required_minutes": drop.required_minutes,
+            "drop_remaining_seconds": self.progress.remaining_seconds(drop.remaining_minutes),
             "campaign_progress": campaign.progress,
             "campaign_remaining_minutes": campaign.remaining_minutes,
+            "campaign_remaining_seconds": self.progress.remaining_seconds(campaign.remaining_minutes),
             "campaign_total_minutes": max(0, (campaign.ends_at - campaign.starts_at).total_seconds() / 60),
             "image_url": str(campaign.image_url),
         }
