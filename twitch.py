@@ -655,6 +655,13 @@ class Twitch:
         channels: Final[OrderedDict[int, Channel]] = self.channels
         self.change_state(State.INVENTORY_FETCH)
         while True:
+            if not self.settings.mining_enabled and self._state not in (
+                State.IDLE,
+                State.INVENTORY_FETCH,
+                State.RESTART,
+                State.EXIT,
+            ):
+                self.change_state(State.IDLE)
             if self._state is State.IDLE:
                 if self.settings.dump:
                     self.gui.close()

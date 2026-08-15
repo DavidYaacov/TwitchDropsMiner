@@ -450,8 +450,14 @@ class WebGUIManager:
         settings.exclude = set(exclude)
         settings.priority_mode = priority_mode
         settings.proxy = proxy
+        settings.mining_enabled = self._boolean(
+            payload.get("mining_enabled"), "mining_enabled"
+        )
         settings.enable_badges_emotes = self._boolean(
             payload.get("enable_badges_emotes"), "enable_badges_emotes"
+        )
+        settings.mine_unlinked_campaigns = self._boolean(
+            payload.get("mine_unlinked_campaigns"), "mine_unlinked_campaigns"
         )
         settings.available_drops_check = self._boolean(
             payload.get("available_drops_check"), "available_drops_check"
@@ -575,7 +581,9 @@ class WebGUIManager:
                 "exclude": sorted(settings.exclude),
                 "priority_mode": settings.priority_mode.name,
                 "proxy": str(settings.proxy),
+                "mining_enabled": settings.mining_enabled,
                 "enable_badges_emotes": settings.enable_badges_emotes,
+                "mine_unlinked_campaigns": settings.mine_unlinked_campaigns,
                 "available_drops_check": settings.available_drops_check,
                 "ntfy_server": settings.ntfy_server,
                 "ntfy_topic": settings.ntfy_topic,

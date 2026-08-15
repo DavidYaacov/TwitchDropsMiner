@@ -21,7 +21,9 @@ class SettingsFile(TypedDict):
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
+    mining_enabled: bool
     enable_badges_emotes: bool
+    mine_unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
     ntfy_server: str
@@ -39,7 +41,9 @@ default_settings: SettingsFile = {
     "connection_quality": 1,
     "language": DEFAULT_LANG,
     "tray_notifications": True,
+    "mining_enabled": True,
     "enable_badges_emotes": False,
+    "mine_unlinked_campaigns": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
     "ntfy_server": "https://ntfy.sh",
@@ -67,7 +71,9 @@ class Settings:
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
+    mining_enabled: bool
     enable_badges_emotes: bool
+    mine_unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
     ntfy_server: str

@@ -24,7 +24,9 @@ class _Settings:
         self.exclude = set()
         self.priority_mode = PriorityMode.PRIORITY_ONLY
         self.proxy = URL()
+        self.mining_enabled = True
         self.enable_badges_emotes = False
+        self.mine_unlinked_campaigns = False
         self.available_drops_check = False
         self.ntfy_server = "https://ntfy.sh"
         self.ntfy_topic = ""
@@ -153,7 +155,9 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
                     "exclude": ["Game B"],
                     "priority_mode": "ENDING_SOONEST",
                     "proxy": "http://proxy.example:8080",
+                    "mining_enabled": False,
                     "enable_badges_emotes": True,
+                    "mine_unlinked_campaigns": True,
                     "available_drops_check": True,
                     "ntfy_server": "https://notify.example.com",
                     "ntfy_topic": "drops_private",
@@ -216,7 +220,9 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(twitch.settings.priority, ["Game A"])
         self.assertEqual(twitch.settings.exclude, {"Game B"})
+        self.assertFalse(twitch.settings.mining_enabled)
         self.assertTrue(twitch.settings.enable_badges_emotes)
+        self.assertTrue(twitch.settings.mine_unlinked_campaigns)
         self.assertTrue(twitch.settings.available_drops_check)
         self.assertEqual(twitch.settings.ntfy_server, "https://notify.example.com")
         self.assertEqual(twitch.settings.ntfy_topic, "drops_private")
