@@ -1,6 +1,7 @@
 services:
   twitchdropsminer:
-    build: .
+    image: ghcr.io/davidyaacov/twitchdropsminer:latest
+    pull_policy: always
     ports:
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
     volumes:

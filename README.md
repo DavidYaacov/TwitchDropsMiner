@@ -6,10 +6,10 @@ when needed, claims rewards, and exposes status and settings in a browser.
 
 ## Docker Compose
 
-Start the miner from this repository:
+Start the latest published miner image:
 
 ```bash
-docker compose up --build -d
+docker compose up -d
 ```
 
 Open `http://localhost:8080`. On the first run, use the Dashboard’s Twitch
@@ -42,12 +42,26 @@ ruff format .
 ## Docker CLI
 
 ```bash
-docker build -t twitchdropsminer .
+docker pull ghcr.io/davidyaacov/twitchdropsminer:latest
 docker run -d --name twitchdropsminer \
   -p 127.0.0.1:8080:8080 \
   -v twitchdropsminer-data:/app/data \
   --restart unless-stopped \
-  twitchdropsminer
+  ghcr.io/davidyaacov/twitchdropsminer:latest
+```
+
+## Build locally
+
+Build the image from this checkout, then run it with the same command using the
+local tag:
+
+```bash
+docker build -t twitchdropsminer:local .
+docker run -d --name twitchdropsminer \
+  -p 127.0.0.1:8080:8080 \
+  -v twitchdropsminer-data:/app/data \
+  --restart unless-stopped \
+  twitchdropsminer:local
 ```
 
 ## Features
@@ -69,5 +83,27 @@ Keep the saved `cookies.jar` private because it contains the account session.
 
 ## Notes
 
-Do not watch other Twitch streams with the same account while the miner is
-active; Twitch can report misleading drop progress in that situation.
+Before mining a campaign, link your Twitch account to the game account on the
+[Twitch Drops campaigns page](https://www.twitch.tv/drops/campaigns). Use the
+Settings page to select priority games or choose a priority mode for everything
+else.
+
+> [!WARNING]
+> Do not watch other Twitch streams with the same account while the miner is
+> active. Twitch can report misleading progress and the miner can get stuck.
+
+> [!CAUTION]
+> Keep the saved `cookies.jar` private: it contains an active account session.
+
+> [!IMPORTANT]
+> Twitch may send a “New Login” email after device login. This is expected;
+> make sure the notification identifies your own IP address.
+
+> [!NOTE]
+> The seconds countdown is an estimate. Twitch can update progress late or for a
+> different drop, so the displayed timer may pause and restart. Check the
+> dashboard periodically: Twitch changes or connection failures can stop mining,
+> so this is not a guaranteed unattended service.
+
+Twitch Drops Miner was originally created by
+[DevilXD](https://github.com/DevilXD/TwitchDropsMiner).
