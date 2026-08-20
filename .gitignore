@@ -3,7 +3,7 @@ __pycache__
 .mypy_cache
 # Dev files
 *.new
-/env
+/.venv
 /cache
 /*.jar
 log.txt
