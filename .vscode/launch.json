@@ -1,59 +1,45 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run Current File",
+            "name": "Debug Web Miner",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Run App (CALL)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "main.py",
+            "program": "${workspaceFolder}/main.py",
             "args": ["-vvv"],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
         },
         {
-            "name": "Run App (DUMP)",
+            "name": "Debug Web Miner (Dump)",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "${workspaceFolder}/main.py",
             "args": ["--dump"],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
         },
         {
-            "name": "Run App (DEBUG+WS)",
+            "name": "Debug Web Miner (WebSocket)",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "${workspaceFolder}/main.py",
             "args": ["-vvv", "--debug-ws"],
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
         },
         {
-            "name": "Run App (DEBUG+GQL)",
+            "name": "Debug Web Miner (GraphQL)",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "${workspaceFolder}/main.py",
             "args": ["-vvv", "--debug-gql"],
             "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "Debug GUI",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "gui.py",
-            "console": "integratedTerminal",
-            "justMyCode": false
-        },
+            "justMyCode": false,
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
+        }
     ]
 }
