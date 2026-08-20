@@ -38,6 +38,7 @@ from utils import (
     RateLimiter,
     AwaitableValue,
     ExponentialBackoff,
+    Game,
 )
 from constants import (
     CALL,
@@ -54,7 +55,6 @@ from constants import (
 )
 
 if TYPE_CHECKING:
-    from utils import Game
     from gui import LoginForm
     from channel import Stream
     from settings import Settings
@@ -67,13 +67,16 @@ gql_logger = logging.getLogger("TwitchDrops.gql")
 
 
 class SkipExtraJsonDecoder(json.JSONDecoder):
-    def decode(self, s: str, *args):
+    def decode(
+        self, s: str, _w: abc.Callable[[str, int], Any] | None = None
+    ) -> Any:
         # skip whitespace check
         obj, end = self.raw_decode(s)
         return obj
 
 
-SAFE_LOADS = lambda s: json.loads(s, cls=SkipExtraJsonDecoder)
+def safe_loads(s: str) -> Any:
+    return json.loads(s, cls=SkipExtraJsonDecoder)
 
 
 class _AuthState:
@@ -118,7 +121,7 @@ class _AuthState:
         self._twitch.gui.help._invalidate_button.config(state="disabled")
 
     async def _oauth_login(self) -> str:
-        login_form: LoginForm = self._twitch.gui.login
+        login_form = cast(LoginForm, self._twitch.gui.login)
         client_info: ClientInfo = self._twitch._client_type
         headers = {
             "Accept": "application/json",
@@ -194,7 +197,7 @@ class _AuthState:
     async def _login(self) -> str:
         logger.info("Login flow started")
         gui_print = self._twitch.gui.print
-        login_form: LoginForm = self._twitch.gui.login
+        login_form = cast(LoginForm, self._twitch.gui.login)
         client_info: ClientInfo = self._twitch._client_type
 
         token_kind: str = ''
@@ -245,7 +248,7 @@ class _AuthState:
             async with self._twitch.request(
                 "POST", "https://passport.twitch.tv/login", headers=headers, json=payload
             ) as response:
-                login_response: JsonType = await response.json(loads=SAFE_LOADS)
+                login_response: JsonType = await response.json(loads=safe_loads)
 
             # Feed this back in to avoid running into CAPTCHA if possible
             if "captcha_proof" in login_response:
@@ -380,7 +383,7 @@ class _AuthState:
             self.device_id = cookie["unique_id"].value
         if not self._hasattrs("access_token", "user_id"):
             # looks like we're missing something
-            login_form: LoginForm = self._twitch.gui.login
+            login_form = cast(LoginForm, self._twitch.gui.login)
             logger.info("Checking login")
             login_form.update(_("gui", "login", "logging_in"), None)
             for client_mismatch_attempt in range(2):
@@ -458,7 +461,7 @@ class Twitch:
             self.gui = GUIManager(self)
         # Storing and watching channels
         self.channels: OrderedDict[int, Channel] = OrderedDict()
-        self.watching_channel: AwaitableValue[Channel] = AwaitableValue()
+        self.watching_channel: AwaitableValue[Channel] = AwaitableValue[Channel]()
         self._watching_task: asyncio.Task[None] | None = None
         self._watching_restart = asyncio.Event()
         # Websocket
@@ -968,19 +971,19 @@ class Twitch:
                         logger.log(CALL, f"Drop progress from GQL: {drop_text}")
                         handled = True
 
-                # Solution 2: If GQL fails, figure out which campaign we're most likely mining
-                # right now, and then bump up the minutes on it's drops
+                # Solution 2: If GQL fails, estimate progress for every campaign
+                # that the watched channel currently advances.
                 if not handled:
-                    if (active_campaign := self.get_active_campaign(channel)) is not None:
-                        active_campaign.bump_minutes(channel)
-                        # NOTE: This usually gets overwritten below
-                        drop_text = f"Unknown drop ({active_campaign.game})"
-                        if (active_drop := active_campaign.first_drop) is not None:
-                            active_drop.display()
-                            drop_text = (
-                                f"{active_drop.name} ({active_drop.campaign.game}, "
-                                f"{active_drop.current_minutes}/{active_drop.required_minutes})"
-                            )
+                    active_campaigns = self.get_active_campaigns(channel)
+                    if active_campaigns:
+                        for campaign in active_campaigns:
+                            campaign.bump_minutes(channel)
+                        drop_text = ", ".join(
+                            f"{drop.name} ({drop.campaign.game}, "
+                            f"{drop.current_minutes}/{drop.required_minutes})"
+                            for campaign in active_campaigns
+                            if (drop := campaign.first_drop) is not None
+                        ) or "Unknown drop"
                         logger.log(CALL, f"Drop progress from active search: {drop_text}")
                         handled = True
                     else:
@@ -1565,20 +1568,17 @@ class Twitch:
         self._mnt_task = asyncio.create_task(self._maintenance_task())
 
     def get_active_campaign(self, channel: Channel | None = None) -> DropsCampaign | None:
+        campaigns = self.get_active_campaigns(channel)
+        return min(campaigns, key=lambda c: c.remaining_minutes, default=None)
+
+    def get_active_campaigns(self, channel: Channel | None = None) -> list[DropsCampaign]:
         if not self.wanted_games:
-            return None
+            return []
         watching_channel = self.watching_channel.get_with_default(channel)
         if watching_channel is None:
             # if we aren't watching anything, we can't earn any drops
-            return None
-        campaigns: list[DropsCampaign] = []
-        for campaign in self.inventory:
-            if campaign.can_earn(watching_channel):
-                campaigns.append(campaign)
-        if campaigns:
-            campaigns.sort(key=lambda c: c.remaining_minutes)
-            return campaigns[0]
-        return None
+            return []
+        return [campaign for campaign in self.inventory if campaign.can_earn(watching_channel)]
 
     async def get_live_streams(
         self, game: Game, *, limit: int = 20, drops_enabled: bool = True

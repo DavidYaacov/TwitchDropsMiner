@@ -602,7 +602,7 @@ class WebGUIManager:
                 "verification_uri": self.login.verification_uri,
                 "user_code": self.login.user_code,
             },
-            "mining": self._mining(drop, watching),
+            "mining": self._mining(twitch.get_active_campaigns(watching), watching),
             "campaigns": [self._campaign(campaign) for campaign in twitch.inventory],
             "channels": [
                 {
@@ -637,10 +637,18 @@ class WebGUIManager:
             },
         }
 
-    def _mining(self, drop: TimedDrop | None, channel: Channel | None) -> dict[str, Any] | None:
-        if drop is None:
-            return None
-        campaign = drop.campaign
+    def _mining(
+        self, campaigns: list[DropsCampaign], channel: Channel | None
+    ) -> list[dict[str, Any]]:
+        return [
+            self._mining_campaign(campaign, drop, channel)
+            for campaign in campaigns
+            if (drop := campaign.first_drop) is not None
+        ]
+
+    def _mining_campaign(
+        self, campaign: DropsCampaign, drop: TimedDrop, channel: Channel | None
+    ) -> dict[str, Any]:
         return {
             "channel": channel.name if channel is not None else "",
             "game": campaign.game.name,

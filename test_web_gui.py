@@ -4,13 +4,16 @@ import socket
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import aiohttp
 from yarl import URL
 
 from constants import PriorityMode, State
+from channel import Channel
 from inventory import DropsCampaign
+from twitch import Twitch
 from web_gui import WebGUIManager, _Progress
 
 
@@ -54,6 +57,9 @@ class _Twitch:
     def close(self):
         self.closed = True
 
+    def get_active_campaigns(self, channel):
+        return []
+
     async def revoke_auth(self):
         self.revoked = True
         return True
@@ -62,12 +68,12 @@ class _Twitch:
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
     def test_unlinked_override_takes_precedence_over_badge_filter(self):
         campaign = object.__new__(DropsCampaign)
-        campaign._twitch = SimpleNamespace(
+        campaign._twitch = cast(Twitch, SimpleNamespace(
             settings=SimpleNamespace(
                 mine_unlinked_campaigns=True,
                 enable_badges_emotes=False,
             )
-        )
+        ))
         campaign.linked = False
         campaign.has_badge_or_emote = True
 
@@ -78,7 +84,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         twitch.settings.ntfy_server = "https://notify.example.com"
         twitch.settings.ntfy_topic = "drops_private"
         twitch.settings.ntfy_token = "tk_secret"
-        gui = WebGUIManager(twitch)
+        gui = WebGUIManager(cast(Twitch, twitch))
         session = MagicMock()
         session.__aenter__ = AsyncMock(return_value=session)
         response = MagicMock(status=200)
@@ -106,7 +112,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
 
     def test_campaign_snapshot_contains_drop_details(self):
         twitch = _Twitch()
-        gui = WebGUIManager(twitch)
+        gui = WebGUIManager(cast(Twitch, twitch))
         benefit = SimpleNamespace(
             name="Reward", image_url=URL("https://example.com/reward.png"),
             type=SimpleNamespace(value="DIRECT_ENTITLEMENT"),
@@ -126,10 +132,32 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             drops=[drop],
         )
 
-        snapshot = gui._campaign(campaign)
+        snapshot = gui._campaign(cast(DropsCampaign, campaign))
 
         self.assertEqual(snapshot["drops"][0]["benefits"][0]["name"], "Reward")
         self.assertEqual(snapshot["drops"][0]["status"], "in_progress")
+
+    def test_dashboard_lists_each_campaign_advanced_by_a_channel(self):
+        twitch = _Twitch()
+        gui = WebGUIManager(cast(Twitch, twitch))
+        channel = cast(Channel, SimpleNamespace(name="Channel"))
+        drop = SimpleNamespace(
+            rewards_text=lambda: "Reward", name="Drop", progress=.5,
+            current_minutes=30, required_minutes=60, remaining_minutes=30,
+        )
+        campaigns = [
+            SimpleNamespace(
+                name=f"Campaign {number}", game=SimpleNamespace(name="Game"),
+                first_drop=drop, progress=.5, remaining_minutes=30,
+                starts_at=datetime.now(timezone.utc), ends_at=datetime.now(timezone.utc),
+                image_url=URL("https://example.com/game.png"),
+            )
+            for number in (1, 2)
+        ]
+
+        mining = gui._mining(cast(list[DropsCampaign], campaigns), channel)
+
+        self.assertEqual([item["campaign"] for item in mining], ["Campaign 1", "Campaign 2"])
 
     async def test_state_and_settings_routes(self):
         with socket.socket() as sock:
@@ -138,7 +166,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
 
         twitch = _Twitch()
         with patch.dict(os.environ, {"WEB_HOST": "127.0.0.1", "WEB_PORT": str(port)}):
-            gui = WebGUIManager(twitch)
+            gui = WebGUIManager(cast(Twitch, twitch))
         gui.start()
 
         async with aiohttp.ClientSession() as session:
@@ -248,14 +276,26 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(twitch.settings.ntfy_enabled)
         self.assertTrue(twitch.settings.saved)
         gui.close()
+        assert gui._server_task is not None
         await gui._server_task
 
 
 class TwitchConnectionTest(unittest.IsolatedAsyncioTestCase):
-    async def test_revoke_auth_clears_session_and_restarts(self):
-        from twitch import Twitch
+    def test_active_campaigns_keeps_all_campaigns_for_the_watched_channel(self):
+        channel = cast(Channel, object())
+        twitch = cast(Any, object.__new__(Twitch))
+        twitch.wanted_games = [object()]
+        twitch.watching_channel = _Value()
+        twitch.inventory = [
+            SimpleNamespace(can_earn=lambda current: current is channel, remaining_minutes=20),
+            SimpleNamespace(can_earn=lambda current: current is channel, remaining_minutes=10),
+        ]
 
-        twitch = object.__new__(Twitch)
+        self.assertEqual(twitch.get_active_campaigns(channel), twitch.inventory)
+        self.assertIs(twitch.get_active_campaign(channel), twitch.inventory[1])
+
+    async def test_revoke_auth_clears_session_and_restarts(self):
+        twitch = cast(Any, object.__new__(Twitch))
         auth = SimpleNamespace(access_token="token", invalidate=Mock())
         response_context = MagicMock()
         response_context.__aenter__.return_value = SimpleNamespace(status=200)

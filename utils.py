@@ -18,7 +18,7 @@ from contextlib import suppress
 from functools import cached_property
 from datetime import datetime, timezone
 from collections import abc, OrderedDict
-from typing import Any, Literal, Callable, Generic, Mapping, TypeVar, ParamSpec, cast, TYPE_CHECKING
+from typing import Any, Literal, Callable, Generic, Mapping, TypeVar, ParamSpec, cast, overload, TYPE_CHECKING
 
 from yarl import URL
 
@@ -127,12 +127,33 @@ def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
     return list(OrderedDict.fromkeys(iterable).keys())
 
 
+@overload
+def task_wrapper(
+    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]], *, critical: bool = False
+) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]: ...
+
+
+@overload
+def task_wrapper(
+    afunc: None = None, *, critical: bool = False
+) -> abc.Callable[
+    [abc.Callable[_P, abc.Coroutine[Any, Any, _T]]],
+    abc.Callable[_P, abc.Coroutine[Any, Any, None]],
+]: ...
+
+
 def task_wrapper(
     afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]] | None = None, *, critical: bool = False
+) -> (
+    abc.Callable[_P, abc.Coroutine[Any, Any, None]]
+    | abc.Callable[
+        [abc.Callable[_P, abc.Coroutine[Any, Any, _T]]],
+        abc.Callable[_P, abc.Coroutine[Any, Any, None]],
+    ]
 ):
     def decorator(
         afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]]
-    ) -> abc.Callable[_P, abc.Coroutine[Any, Any, _T]]:
+    ) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]:
         @wraps(afunc)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs):
             try:
