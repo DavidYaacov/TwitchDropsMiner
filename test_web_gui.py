@@ -18,8 +18,11 @@ from web_gui import WebGUIManager, _Progress
 
 
 class _Value:
+    def __init__(self, value=None):
+        self.value = value
+
     def get_with_default(self, default):
-        return default
+        return self.value if self.value is not None else default
 
 
 class _Settings:
@@ -66,6 +69,14 @@ class _Twitch:
 
 
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
+    def test_snapshot_exposes_watching_channel(self):
+        twitch = _Twitch()
+        twitch.watching_channel = _Value(SimpleNamespace(name="Channel"))
+
+        self.assertEqual(
+            WebGUIManager(cast(Twitch, twitch)).snapshot()["watching_channel"], "Channel"
+        )
+
     def test_unlinked_override_takes_precedence_over_badge_filter(self):
         campaign = object.__new__(DropsCampaign)
         campaign._twitch = cast(

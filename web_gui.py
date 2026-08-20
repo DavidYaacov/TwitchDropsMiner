@@ -594,6 +594,7 @@ class WebGUIManager:
             "commit": os.environ.get("TDM_COMMIT_SHA", "unknown"),
             "status": self.status.text,
             "icon": self.tray.icon,
+            "watching_channel": watching.name if watching is not None else "",
             "login": {
                 "status": self.login.status,
                 "connected": self.login.user_id is not None,
