@@ -6,6 +6,13 @@ claiming, Twitch device login and account switching, activity, and
 Docker-relevant settings at
 `http://localhost:8080`.
 
+## Local web development
+
+You can run the same web GUI without Docker. Install the Python dependencies
+once with `python -m pip install -r requirements.txt`, then run
+`run_web_dev.bat` on Windows or `sh run_web_dev.sh` on Linux/macOS. Open
+`http://127.0.0.1:8080`; set `WEB_PORT` before launching to use another port.
+
 ## Docker Compose
 
 The repository includes [`docker-compose.yml`](docker-compose.yml). This is a
