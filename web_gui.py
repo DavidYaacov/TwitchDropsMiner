@@ -48,9 +48,7 @@ class _Websockets:
     def __init__(self) -> None:
         self.items: dict[int, dict[str, Any]] = {}
 
-    def update(
-        self, idx: int, status: str | None = None, topics: int | None = None
-    ) -> None:
+    def update(self, idx: int, status: str | None = None, topics: int | None = None) -> None:
         item = self.items.setdefault(idx, {"status": "", "topics": 0})
         if status is not None:
             item["status"] = status
@@ -123,14 +121,8 @@ class _Tray:
             logger.error("Cannot send ntfy notification: %s", exc)
 
     @staticmethod
-    async def _send_ntfy(
-        server: str, topic: str, token: str, message: str, title: str
-    ) -> None:
-        headers = (
-            {"Authorization": f"Bearer {token}"}
-            if token
-            else None
-        )
+    async def _send_ntfy(server: str, topic: str, token: str, message: str, title: str) -> None:
+        headers = {"Authorization": f"Bearer {token}"} if token else None
         async with ClientSession(timeout=ClientTimeout(total=10)) as session:
             async with session.post(
                 server,
@@ -139,7 +131,9 @@ class _Tray:
             ) as response:
                 if response.status >= 400:
                     detail = (await response.text())[:200]
-                    raise RuntimeError(f"ntfy rejected the notification ({response.status}): {detail}")
+                    raise RuntimeError(
+                        f"ntfy rejected the notification ({response.status}): {detail}"
+                    )
 
 
 class _Progress:
@@ -160,11 +154,7 @@ class _Progress:
         )
 
     def start_timer(self) -> None:
-        if (
-            self.drop is not None
-            and self.drop.remaining_minutes > 0
-            and self._deadline is None
-        ):
+        if self.drop is not None and self.drop.remaining_minutes > 0 and self._deadline is None:
             self._deadline = monotonic() + 60
 
     def stop_timer(self) -> None:
@@ -289,9 +279,7 @@ class WebGUIManager:
     async def coro_unless_closed(self, coro: Any) -> Any:
         work = asyncio.ensure_future(coro)
         closing = asyncio.create_task(self._close_requested.wait())
-        done, pending = await asyncio.wait(
-            (work, closing), return_when=asyncio.FIRST_COMPLETED
-        )
+        done, pending = await asyncio.wait((work, closing), return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
         if closing in done:
@@ -479,9 +467,21 @@ class WebGUIManager:
             changes.append("Proxy changed")
         boolean_changes = (
             ("Miner", settings.mining_enabled, mining_enabled),
-            ("Mine unlinked campaigns", settings.mine_unlinked_campaigns, mine_unlinked_campaigns),
-            ("Badge and emote support", settings.enable_badges_emotes, enable_badges_emotes),
-            ("Available-drops checks", settings.available_drops_check, available_drops_check),
+            (
+                "Mine unlinked campaigns",
+                settings.mine_unlinked_campaigns,
+                mine_unlinked_campaigns,
+            ),
+            (
+                "Badge and emote support",
+                settings.enable_badges_emotes,
+                enable_badges_emotes,
+            ),
+            (
+                "Available-drops checks",
+                settings.available_drops_check,
+                available_drops_check,
+            ),
             ("ntfy notifications", settings.ntfy_enabled, ntfy_enabled),
         )
         changes.extend(
@@ -587,7 +587,6 @@ class WebGUIManager:
     def snapshot(self) -> dict[str, Any]:
         twitch = self._twitch
         watching = twitch.watching_channel.get_with_default(None)
-        drop = self.progress.drop
         settings = twitch.settings
         return {
             "version": __version__,
@@ -660,8 +659,12 @@ class WebGUIManager:
             "drop_remaining_seconds": self.progress.remaining_seconds(drop.remaining_minutes),
             "campaign_progress": campaign.progress,
             "campaign_remaining_minutes": campaign.remaining_minutes,
-            "campaign_remaining_seconds": self.progress.remaining_seconds(campaign.remaining_minutes),
-            "campaign_total_minutes": max(0, (campaign.ends_at - campaign.starts_at).total_seconds() / 60),
+            "campaign_remaining_seconds": self.progress.remaining_seconds(
+                campaign.remaining_minutes
+            ),
+            "campaign_total_minutes": max(
+                0, (campaign.ends_at - campaign.starts_at).total_seconds() / 60
+            ),
             "image_url": str(campaign.image_url),
         }
 

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 # logging special levels
 CALL: int = logging.INFO - 1
 logging.addLevelName(CALL, "CALL")
+
+
 def _merge_vars(base_vars: JsonType, vars: JsonType) -> None:
     # NOTE: This modifies base in place
     for k, v in vars.items():
@@ -86,10 +88,10 @@ LOGGING_LEVELS = {
 }
 FILE_FORMATTER = logging.Formatter(
     "{asctime}.{msecs:03.0f}:\t{levelname:>7}:\t{message}",
-    style='{',
+    style="{",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style='{', datefmt="%H:%M:%S")
+OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style="{", datefmt="%H:%M:%S")
 
 
 class ClientInfo:
@@ -149,7 +151,7 @@ class ClientType:
                 "Mozilla/5.0 (Linux; Android 16; LM-X420) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/138.0.7204.158 Mobile Safari/537.36"
             ),
-        ]
+        ],
     )
     ANDROID_APP = ClientInfo(
         URL("https://www.twitch.tv"),
@@ -183,7 +185,7 @@ class ClientType:
                 "Dalvik/2.1.0 (Linux; U; Android 14; SM-X306B Build/UP1A.231005.007) "
                 "tv.twitch.android.app/25.3.0/2503006"
             ),
-        ]
+        ],
     )
     SMARTBOX = ClientInfo(
         URL("https://android.tv.twitch.tv"),
@@ -222,7 +224,7 @@ class GQLQuery(JsonType):
                     "repository": "twilight",
                     "encoding": "GZIP_B64",
                 }
-            }
+            },
         )
 
 
@@ -235,7 +237,7 @@ class GQLPersistedQuery(JsonType):
                     "version": 1,
                     "sha256Hash": sha256,
                 }
-            }
+            },
         )
         if variables is not None:
             self.__setitem__("variables", variables)
@@ -294,7 +296,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404",
         variables={
             "fetchRewardCampaigns": False,
-        }
+        },
     ),
     # returns current state of drops (current drop progress)
     "CurrentDrop": GQLPersistedQuery(
@@ -311,7 +313,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "d9cae7761dafab85908c85e6683cb4201b449e66ac3bb5e894f15ff12aeafaa7",
         variables={
             "fetchRewardCampaigns": False,
-        }
+        },
     ),
     # returns extended information about a particular campaign
     "CampaignDetails": GQLPersistedQuery(
@@ -416,9 +418,7 @@ class WebsocketTopic:
         self._process: TopicProcess = process
 
     @classmethod
-    def as_str(
-        cls, category: Literal["User", "Channel"], topic_name: str, target_id: int
-    ) -> str:
+    def as_str(cls, category: Literal["User", "Channel"], topic_name: str, target_id: int) -> str:
         return f"{WEBSOCKET_TOPICS[category][topic_name]}.{target_id}"
 
     def __call__(self, message: JsonType):

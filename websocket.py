@@ -70,7 +70,9 @@ class Websocket:
 
     def set_status(self, status: str | None = None, refresh_topics: bool = False):
         self._twitch.gui.websockets.update(
-            self._idx, status=status, topics=(len(self.topics) if refresh_topics else None)
+            self._idx,
+            status=status,
+            topics=(len(self.topics) if refresh_topics else None),
         )
 
     def request_reconnect(self):
@@ -150,7 +152,8 @@ class Websocket:
         self._closed.clear()
         # Connect/Reconnect loop
         async for websocket in self._backoff_connect(
-            "wss://pubsub-edge.twitch.tv/v1", maximum=3*60  # 3 minutes maximum backoff time
+            "wss://pubsub-edge.twitch.tv/v1",
+            maximum=3 * 60,  # 3 minutes maximum backoff time
         ):
             self._ws.set(websocket)
             self._reconnect_requested.clear()
@@ -217,7 +220,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.difference_update(removed)
@@ -233,7 +236,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.update(added)

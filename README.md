@@ -31,6 +31,14 @@ Set `WEB_PORT` to publish another local port:
 WEB_PORT=9090 docker compose up -d
 ```
 
+## Development
+
+```bash
+python -m pip install -r requirements-dev.txt
+ruff check .
+ruff format .
+```
+
 ## Docker CLI
 
 ```bash

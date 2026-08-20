@@ -25,6 +25,12 @@ jobs:
         with:
           python-version: ${{env.PYTHON_VERSION}}
 
+      - name: Lint and format check
+        run: |
+          python3 -m pip install -r requirements-dev.txt
+          ruff check .
+          ruff format --check .
+
       - name: Validate language files
         run: |
           failed=()

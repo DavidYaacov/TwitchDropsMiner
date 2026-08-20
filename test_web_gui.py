@@ -68,12 +68,15 @@ class _Twitch:
 class WebGUITest(unittest.IsolatedAsyncioTestCase):
     def test_unlinked_override_takes_precedence_over_badge_filter(self):
         campaign = object.__new__(DropsCampaign)
-        campaign._twitch = cast(Twitch, SimpleNamespace(
-            settings=SimpleNamespace(
-                mine_unlinked_campaigns=True,
-                enable_badges_emotes=False,
-            )
-        ))
+        campaign._twitch = cast(
+            Twitch,
+            SimpleNamespace(
+                settings=SimpleNamespace(
+                    mine_unlinked_campaigns=True,
+                    enable_badges_emotes=False,
+                )
+            ),
+        )
         campaign.linked = False
         campaign.has_badge_or_emote = True
 
@@ -114,21 +117,39 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         twitch = _Twitch()
         gui = WebGUIManager(cast(Twitch, twitch))
         benefit = SimpleNamespace(
-            name="Reward", image_url=URL("https://example.com/reward.png"),
+            name="Reward",
+            image_url=URL("https://example.com/reward.png"),
             type=SimpleNamespace(value="DIRECT_ENTITLEMENT"),
         )
         drop = SimpleNamespace(
-            id="drop-1", name="First drop", is_claimed=False, can_claim=False,
-            current_minutes=30, required_minutes=60, progress=.5,
-            starts_at=datetime.now(timezone.utc), ends_at=datetime.now(timezone.utc),
+            id="drop-1",
+            name="First drop",
+            is_claimed=False,
+            can_claim=False,
+            current_minutes=30,
+            required_minutes=60,
+            progress=0.5,
+            starts_at=datetime.now(timezone.utc),
+            ends_at=datetime.now(timezone.utc),
             benefits=[benefit],
         )
         campaign = SimpleNamespace(
-            id="campaign-1", name="Campaign", game=SimpleNamespace(name="Game"),
-            image_url=URL("https://example.com/game.png"), active=True, upcoming=False,
-            linked=True, link_url="", eligible=True, finished=False,
-            starts_at=datetime.now(timezone.utc), ends_at=datetime.now(timezone.utc),
-            allowed_channels=[], claimed_drops=0, total_drops=1, progress=.5,
+            id="campaign-1",
+            name="Campaign",
+            game=SimpleNamespace(name="Game"),
+            image_url=URL("https://example.com/game.png"),
+            active=True,
+            upcoming=False,
+            linked=True,
+            link_url="",
+            eligible=True,
+            finished=False,
+            starts_at=datetime.now(timezone.utc),
+            ends_at=datetime.now(timezone.utc),
+            allowed_channels=[],
+            claimed_drops=0,
+            total_drops=1,
+            progress=0.5,
             drops=[drop],
         )
 
@@ -142,14 +163,22 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         gui = WebGUIManager(cast(Twitch, twitch))
         channel = cast(Channel, SimpleNamespace(name="Channel"))
         drop = SimpleNamespace(
-            rewards_text=lambda: "Reward", name="Drop", progress=.5,
-            current_minutes=30, required_minutes=60, remaining_minutes=30,
+            rewards_text=lambda: "Reward",
+            name="Drop",
+            progress=0.5,
+            current_minutes=30,
+            required_minutes=60,
+            remaining_minutes=30,
         )
         campaigns = [
             SimpleNamespace(
-                name=f"Campaign {number}", game=SimpleNamespace(name="Game"),
-                first_drop=drop, progress=.5, remaining_minutes=30,
-                starts_at=datetime.now(timezone.utc), ends_at=datetime.now(timezone.utc),
+                name=f"Campaign {number}",
+                game=SimpleNamespace(name="Game"),
+                first_drop=drop,
+                progress=0.5,
+                remaining_minutes=30,
+                starts_at=datetime.now(timezone.utc),
+                ends_at=datetime.now(timezone.utc),
                 image_url=URL("https://example.com/game.png"),
             )
             for number in (1, 2)

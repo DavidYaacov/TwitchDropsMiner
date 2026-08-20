@@ -10,7 +10,14 @@ import warnings
 
 import truststore
 
-from constants import FILE_FORMATTER, LOCK_PATH, LOG_PATH, LOGGING_LEVELS, OUTPUT_FORMATTER, SELF_PATH
+from constants import (
+    FILE_FORMATTER,
+    LOCK_PATH,
+    LOG_PATH,
+    LOGGING_LEVELS,
+    OUTPUT_FORMATTER,
+    SELF_PATH,
+)
 from exceptions import CaptchaRequired
 from settings import Settings
 from translate import _
@@ -103,14 +110,17 @@ if __name__ == "__main__":
     warnings.simplefilter("default", ResourceWarning)
 
     parser = argparse.ArgumentParser(
-        SELF_PATH.name, description="A program that allows you to mine timed drops on Twitch."
+        SELF_PATH.name,
+        description="A program that allows you to mine timed drops on Twitch.",
     )
     parser.add_argument("--version", action="version", version=f"v{__version__}")
     parser.add_argument("-v", dest="_verbose", action="count", default=0)
     parser.add_argument("--log", action="store_true")
     parser.add_argument("--dump", action="store_true")
     parser.add_argument("--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS
+    )
     args = parser.parse_args(namespace=ParsedArgs())
     settings = Settings(args)
 
