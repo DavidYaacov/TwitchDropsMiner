@@ -19,6 +19,7 @@ from translate import _
 from channel import Channel
 from websocket import WebsocketPool
 from inventory import DropsCampaign
+from web_gui import WebGUIManager
 from exceptions import (
     ExitRequest,
     GQLException,
@@ -55,7 +56,6 @@ from constants import (
 )
 
 if TYPE_CHECKING:
-    from gui import LoginForm
     from channel import Stream
     from settings import Settings
     from inventory import TimedDrop
@@ -121,7 +121,7 @@ class _AuthState:
         self._twitch.gui.help._invalidate_button.config(state="disabled")
 
     async def _oauth_login(self) -> str:
-        login_form = cast(LoginForm, self._twitch.gui.login)
+        login_form: Any = self._twitch.gui.login
         client_info: ClientInfo = self._twitch._client_type
         headers = {
             "Accept": "application/json",
@@ -197,7 +197,7 @@ class _AuthState:
     async def _login(self) -> str:
         logger.info("Login flow started")
         gui_print = self._twitch.gui.print
-        login_form = cast(LoginForm, self._twitch.gui.login)
+        login_form: Any = self._twitch.gui.login
         client_info: ClientInfo = self._twitch._client_type
 
         token_kind: str = ''
@@ -383,7 +383,7 @@ class _AuthState:
             self.device_id = cookie["unique_id"].value
         if not self._hasattrs("access_token", "user_id"):
             # looks like we're missing something
-            login_form = cast(LoginForm, self._twitch.gui.login)
+            login_form: Any = self._twitch.gui.login
             logger.info("Checking login")
             login_form.update(_("gui", "login", "logging_in"), None)
             for client_mismatch_attempt in range(2):
@@ -433,7 +433,7 @@ class _AuthState:
 
 
 class Twitch:
-    def __init__(self, settings: Settings, headless: bool = False):
+    def __init__(self, settings: Settings):
         self.settings: Settings = settings
         # State management
         self._state: State = State.IDLE
@@ -450,15 +450,7 @@ class Twitch:
         self._client_type: ClientInfo = ClientType.ANDROID_APP
         self._session: aiohttp.ClientSession | None = None
         self._auth_state: _AuthState = _AuthState(self)
-        # GUI
-        if headless:
-            from web_gui import WebGUIManager
-
-            self.gui = WebGUIManager(self)
-        else:
-            from gui import GUIManager
-
-            self.gui = GUIManager(self)
+        self.gui = WebGUIManager(self)
         # Storing and watching channels
         self.channels: OrderedDict[int, Channel] = OrderedDict()
         self.watching_channel: AwaitableValue[Channel] = AwaitableValue[Channel]()

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 from collections import abc
 from typing import Any, TypedDict, TYPE_CHECKING
 
 from exceptions import MinerException
-from utils import json_load, json_save
-from constants import IS_PACKAGED, LANG_PATH, DEFAULT_LANG
+
+
+DEFAULT_LANG = "English"
 
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
@@ -452,23 +452,9 @@ default_translation: Translation = {
 
 class Translator:
     def __init__(self) -> None:
-        english_only = os.environ.get("TDM_ENGLISH_ONLY") == "1"
-        self._langs: list[str] = [DEFAULT_LANG] if english_only else []
-        # start with (and always copy) the default translation
+        self._langs = [DEFAULT_LANG]
         self._translation: Translation = default_translation.copy()
-        # if we're in dev, update the template English.json file
-        if not IS_PACKAGED and not english_only:
-            default_langpath = LANG_PATH.joinpath(f"{DEFAULT_LANG}.json")
-            json_save(default_langpath, default_translation)
         self._translation["language_name"] = DEFAULT_LANG
-        # load available translation names
-        if not english_only:
-            for filepath in LANG_PATH.glob("*.json"):
-                self._langs.append(filepath.stem)
-            self._langs.sort()
-            if DEFAULT_LANG in self._langs:
-                self._langs.remove(DEFAULT_LANG)
-            self._langs.insert(0, DEFAULT_LANG)
 
     @property
     def languages(self) -> abc.Iterable[str]:
@@ -484,15 +470,7 @@ class Translator:
         elif self._translation["language_name"] == language:
             # same language as loaded selected
             return
-        elif language == DEFAULT_LANG:
-            # default language selected - use the memory value
-            self._translation = default_translation.copy()
-        else:
-            self._translation = json_load(
-                LANG_PATH.joinpath(f"{language}.json"), default_translation
-            )
-            if "language_name" in self._translation:
-                raise ValueError("Translations cannot define 'language_name'")
+        self._translation = default_translation.copy()
         self._translation["language_name"] = language
 
     def __call__(self, *path: str) -> str:

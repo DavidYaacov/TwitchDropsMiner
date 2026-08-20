@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from typing import Any, TypedDict, TYPE_CHECKING
 
 from yarl import URL
 
 from utils import json_load, json_save
-from constants import SETTINGS_PATH, DEFAULT_LANG, PriorityMode
+from constants import SETTINGS_PATH, PriorityMode
 
 if TYPE_CHECKING:
     from main import ParsedArgs
@@ -14,13 +13,9 @@ if TYPE_CHECKING:
 
 class SettingsFile(TypedDict):
     proxy: URL
-    language: str
-    dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
-    tray_notifications: bool
     mining_enabled: bool
     enable_badges_emotes: bool
     mine_unlinked_campaigns: bool
@@ -36,11 +31,7 @@ default_settings: SettingsFile = {
     "proxy": URL(),
     "priority": [],
     "exclude": set(),
-    "dark_mode": False,
-    "autostart_tray": False,
     "connection_quality": 1,
-    "language": DEFAULT_LANG,
-    "tray_notifications": True,
     "mining_enabled": True,
     "enable_badges_emotes": False,
     "mine_unlinked_campaigns": False,
@@ -64,13 +55,9 @@ class Settings:
     logging_level: int
     # from settings file
     proxy: URL
-    language: str
-    dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
-    tray_notifications: bool
     mining_enabled: bool
     enable_badges_emotes: bool
     mine_unlinked_campaigns: bool
@@ -87,9 +74,6 @@ class Settings:
         self._settings: SettingsFile = json_load(SETTINGS_PATH, default_settings)
         self._args: ParsedArgs = args
         self._altered: bool = False
-
-        if os.environ.get("TDM_ENGLISH_ONLY") == "1":
-            self._settings["language"] = DEFAULT_LANG
 
     # default logic of reading settings is to check args first, then the settings file
     def __getattr__(self, name: str, /) -> Any:
