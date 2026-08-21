@@ -462,12 +462,12 @@ class Translator:
 
     @property
     def current(self) -> str:
-        return self._translation["language_name"]
+        return self._translation.get("language_name", DEFAULT_LANG)
 
     def set_language(self, language: str):
         if language not in self._langs:
             raise ValueError("Unrecognized language")
-        elif self._translation["language_name"] == language:
+        elif self._translation.get("language_name", DEFAULT_LANG) == language:
             # same language as loaded selected
             return
         self._translation = default_translation.copy()

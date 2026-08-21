@@ -124,7 +124,7 @@ def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
 
 @overload
 def task_wrapper(
-    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]], *, critical: bool = False
+    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]], *, critical: bool = False
 ) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]: ...
 
 
@@ -132,24 +132,24 @@ def task_wrapper(
 def task_wrapper(
     afunc: None = None, *, critical: bool = False
 ) -> abc.Callable[
-    [abc.Callable[_P, abc.Coroutine[Any, Any, _T]]],
+    [abc.Callable[_P, abc.Coroutine[Any, Any, Any]]],
     abc.Callable[_P, abc.Coroutine[Any, Any, None]],
 ]: ...
 
 
 def task_wrapper(
-    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]] | None = None,
+    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]] | None = None,
     *,
     critical: bool = False,
 ) -> (
     abc.Callable[_P, abc.Coroutine[Any, Any, None]]
     | abc.Callable[
-        [abc.Callable[_P, abc.Coroutine[Any, Any, _T]]],
+        [abc.Callable[_P, abc.Coroutine[Any, Any, Any]]],
         abc.Callable[_P, abc.Coroutine[Any, Any, None]],
     ]
 ):
     def decorator(
-        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]],
+        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]],
     ) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]:
         @wraps(afunc)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs):

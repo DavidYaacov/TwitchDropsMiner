@@ -51,6 +51,7 @@ class _Twitch:
         self.inventory = []
         self.watching_channel = _Value()
         self.state = None
+        self._auth_state = SimpleNamespace()
         self.closed = False
         self.revoked = False
 
@@ -234,6 +235,7 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             gui = WebGUIManager(cast(Twitch, twitch))
         gui.start()
 
+        state: dict[str, Any] = {}
         async with aiohttp.ClientSession() as session:
             for _ in range(50):
                 try:

@@ -135,14 +135,14 @@ class Stream:
                 available_qualities = await qualities_response.text()
             # try to decode the suspected JSON
             try:
-                available_json: JsonType = json.loads(available_qualities)
+                available_json: JsonType | list[JsonType] = json.loads(available_qualities)
             except json.JSONDecodeError:
                 # No JSON: this is the expected path. Do nothing and continue with the below.
                 pass
             else:
                 # JSON was decoded - if there's an error, log it and report failure
                 if isinstance(available_json, list):
-                    available_json = available_json[0]
+                    available_json = available_json[0] if available_json else {}
                 if "error" in available_json:
                     logger.error(f'Stream URL get error: "{available_json["error"]}"')
                     self.channel.set_offline()
@@ -464,14 +464,14 @@ class Channel:
         available_chunks = re.sub(r'"url": ?".+}",', "", available_chunks)
         # try to decode the suspected JSON
         try:
-            available_json: JsonType = json.loads(available_chunks)
+            available_json: JsonType | list[JsonType] = json.loads(available_chunks)
         except json.JSONDecodeError:
             # No JSON: this is the expected path. Do nothing and continue with the below.
             pass
         else:
             # JSON was decoded - if there's an error, log it and report failure
             if isinstance(available_json, list):
-                available_json = available_json[0]
+                available_json = available_json[0] if available_json else {}
             if "error" in available_json:
                 logger.error(f'Send watch error: "{available_json["error"]}"')
             return False

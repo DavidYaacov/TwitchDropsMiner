@@ -368,10 +368,9 @@ class _AuthState:
     async def _validate(self):
         if not hasattr(self, "session_id"):
             self.session_id = create_nonce(CHARS_HEX_LOWER, 16)
-        if not self._hasattrs("device_id", "access_token", "user_id"):
-            session = await self._twitch.get_session()
-            jar = cast(aiohttp.CookieJar, session.cookie_jar)
-            client_info: ClientInfo = self._twitch._client_type
+        session = await self._twitch.get_session()
+        jar = cast(aiohttp.CookieJar, session.cookie_jar)
+        client_info: ClientInfo = self._twitch._client_type
         if not self._hasattrs("device_id"):
             async with self._twitch.request(
                 "GET", client_info.CLIENT_URL, headers=self.headers()
@@ -1299,8 +1298,8 @@ class Twitch:
                 and datetime.now(timezone.utc) >= (invalidate_after - session_timeout)
             ):
                 raise RequestInvalid()
+            response: aiohttp.ClientResponse | None = None
             try:
-                response: aiohttp.ClientResponse | None = None
                 response = await self.gui.coro_unless_closed(session.request(method, url, **kwargs))
                 assert response is not None
                 logger.debug(f"Response: {response.status}: {response}")
