@@ -228,6 +228,11 @@ class WebGUIManager:
             raise ValueError("WEB_PORT must be a number") from exc
         if not 1 <= self._port <= 65535:
             raise ValueError("WEB_PORT must be between 1 and 65535")
+        self._public_url = os.environ.get("WEB_PUBLIC_URL", "").rstrip("/")
+        if self._public_url:
+            url = URL(self._public_url)
+            if url.scheme not in {"http", "https"} or url.host is None:
+                raise ValueError("WEB_PUBLIC_URL must be an absolute HTTP(S) URL")
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
         self._icons_path = Path(__file__).with_name("icons")
         self._csrf_token = token_urlsafe(32)
@@ -331,7 +336,7 @@ class WebGUIManager:
         await runner.setup()
         try:
             await web.TCPSite(runner, self._host, self._port).start()
-            self.print(f"Web GUI available at http://localhost:{self._port}")
+            self.print(f"Web GUI available at {self._public_url or f'http://localhost:{self._port}'}")
             await self._close_requested.wait()
         except asyncio.CancelledError:
             pass

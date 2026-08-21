@@ -31,6 +31,12 @@ Set `WEB_PORT` to publish another local port:
 WEB_PORT=9090 docker compose up -d
 ```
 
+Behind a reverse proxy, set `WEB_PUBLIC_URL` to the public address shown in the log:
+
+```bash
+WEB_PUBLIC_URL=https://drops.example.com docker compose up -d
+```
+
 ## Development
 
 ```bash

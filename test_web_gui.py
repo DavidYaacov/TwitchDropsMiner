@@ -77,6 +77,12 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             WebGUIManager(cast(Twitch, twitch)).snapshot()["watching_channel"], "Channel"
         )
 
+    def test_public_url_overrides_the_displayed_local_address(self):
+        with patch.dict(os.environ, {"WEB_PUBLIC_URL": "https://drops.example.com/"}):
+            gui = WebGUIManager(cast(Twitch, _Twitch()))
+
+        self.assertEqual(gui._public_url, "https://drops.example.com")
+
     def test_unlinked_override_takes_precedence_over_badge_filter(self):
         campaign = object.__new__(DropsCampaign)
         campaign._twitch = cast(
