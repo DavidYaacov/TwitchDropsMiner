@@ -81,6 +81,7 @@ class _Login:
         self.user_code = ""
 
     async def ask_enter_code(self, verification_uri: URL, user_code: str) -> None:
+        self.user_id = None
         self.verification_uri = str(verification_uri)
         self.user_code = user_code
         self._manager.print(f"Open {verification_uri} and enter code {user_code}")
@@ -320,6 +321,7 @@ class WebGUIManager:
         app.add_routes(
             [
                 web.get("/", self._index),
+                web.get("/icons/pickaxe.png", self._pickaxe),
                 web.get("/icons/{icon}.ico", self._favicon),
                 web.get("/api/ui-version", self._ui_version),
                 web.get("/api/state", self._get_state),
@@ -338,7 +340,9 @@ class WebGUIManager:
         await runner.setup()
         try:
             await web.TCPSite(runner, self._host, self._port).start()
-            self.print(f"Web GUI available at {self._public_url or f'http://localhost:{self._port}'}")
+            self.print(
+                f"Web GUI available at {self._public_url or f'http://localhost:{self._port}'}"
+            )
             await self._close_requested.wait()
         except asyncio.CancelledError:
             pass
@@ -374,6 +378,9 @@ class WebGUIManager:
         if icon not in FAVICONS:
             raise web.HTTPNotFound()
         return web.FileResponse(self._icons_path / f"{icon}.ico")
+
+    async def _pickaxe(self, request: web.Request) -> web.StreamResponse:
+        return web.FileResponse(self._icons_path / "pickaxe.png")
 
     async def _refresh(self, request: web.Request) -> web.Response:
         self._validate_csrf(request)
@@ -601,6 +608,10 @@ class WebGUIManager:
         twitch = self._twitch
         watching = twitch.watching_channel.get_with_default(None)
         settings = twitch.settings
+        auth_state = getattr(twitch, "_auth_state", None)
+        connected = (
+            auth_state is not None and hasattr(auth_state, "user_id") and not self.login.user_code
+        )
         return {
             "version": __version__,
             "csrf_token": self._csrf_token,
@@ -610,8 +621,8 @@ class WebGUIManager:
             "watching_channel": watching.name if watching is not None else "",
             "login": {
                 "status": self.login.status,
-                "connected": self.login.user_id is not None,
-                "user_id": self.login.user_id,
+                "connected": connected,
+                "user_id": self.login.user_id if connected else None,
                 "verification_uri": self.login.verification_uri,
                 "user_code": self.login.user_code,
             },

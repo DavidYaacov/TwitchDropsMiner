@@ -77,6 +77,22 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             WebGUIManager(cast(Twitch, twitch)).snapshot()["watching_channel"], "Channel"
         )
 
+    def test_snapshot_hides_cached_login_without_authentication(self):
+        gui = WebGUIManager(cast(Twitch, _Twitch()))
+        gui.login.update("Logged in", 123)
+
+        self.assertFalse(gui.snapshot()["login"]["connected"])
+        self.assertIsNone(gui.snapshot()["login"]["user_id"])
+
+    async def test_login_code_hides_existing_authentication(self):
+        twitch = _Twitch()
+        twitch._auth_state = SimpleNamespace(user_id=123)
+        gui = WebGUIManager(cast(Twitch, twitch))
+
+        await gui.login.ask_enter_code(URL("https://www.twitch.tv/activate"), "ABCD")
+
+        self.assertFalse(gui.snapshot()["login"]["connected"])
+
     def test_public_url_overrides_the_displayed_local_address(self):
         with patch.dict(os.environ, {"WEB_PUBLIC_URL": "https://drops.example.com/"}):
             gui = WebGUIManager(cast(Twitch, _Twitch()))
@@ -236,6 +252,8 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(ui_version["enabled"])
             self.assertIsInstance(ui_version["version"], int)
             async with session.get(f"http://127.0.0.1:{port}/icons/active.ico") as response:
+                self.assertEqual(response.status, 200)
+            async with session.get(f"http://127.0.0.1:{port}/icons/pickaxe.png") as response:
                 self.assertEqual(response.status, 200)
             async with session.post(
                 f"http://127.0.0.1:{port}/api/refresh",
