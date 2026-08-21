@@ -9,7 +9,7 @@
             "args": ["-vvv"],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080", "WEB_HOT_RELOAD": "1"}
         },
         {
             "name": "Debug Web Miner (Dump)",
@@ -19,7 +19,7 @@
             "args": ["--dump"],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080", "WEB_HOT_RELOAD": "1"}
         },
         {
             "name": "Debug Web Miner (WebSocket)",
@@ -29,7 +29,7 @@
             "args": ["-vvv", "--debug-ws"],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080", "WEB_HOT_RELOAD": "1"}
         },
         {
             "name": "Debug Web Miner (GraphQL)",
@@ -39,7 +39,7 @@
             "args": ["-vvv", "--debug-gql"],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080"}
+            "env": {"WEB_HOST": "127.0.0.1", "WEB_PORT": "8080", "WEB_HOT_RELOAD": "1"}
         }
     ]
 }

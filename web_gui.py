@@ -237,6 +237,11 @@ class WebGUIManager:
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
         self._icons_path = Path(__file__).with_name("icons")
         self._hot_reload = os.environ.get("WEB_HOT_RELOAD") == "1"
+        self._debug: Any | None = None
+        if self._hot_reload and Path(__file__).with_name("web_debug.py").is_file():
+            from web_debug import WebDebug
+
+            self._debug = WebDebug(self._validate_csrf)
         self._csrf_token = token_urlsafe(32)
         self._activity: deque[dict[str, str]] = deque(maxlen=100)
         self._games: set[str] = set()
@@ -318,8 +323,7 @@ class WebGUIManager:
 
     async def _serve(self) -> None:
         app = web.Application(client_max_size=32 * 1024)
-        app.add_routes(
-            [
+        routes = [
                 web.get("/", self._index),
                 web.get("/icons/pickaxe.png", self._pickaxe),
                 web.get("/icons/{icon}.ico", self._favicon),
@@ -335,7 +339,9 @@ class WebGUIManager:
                     self._claim_drop,
                 ),
             ]
-        )
+        if self._debug is not None:
+            routes.extend(self._debug.routes())
+        app.add_routes(routes)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         try:
@@ -612,7 +618,7 @@ class WebGUIManager:
         connected = (
             auth_state is not None and hasattr(auth_state, "user_id") and not self.login.user_code
         )
-        return {
+        state = {
             "version": __version__,
             "csrf_token": self._csrf_token,
             "commit": os.environ.get("TDM_COMMIT_SHA", "unknown"),
@@ -660,6 +666,7 @@ class WebGUIManager:
                 "games": sorted(self._games),
             },
         }
+        return self._debug.apply(state) if self._debug is not None else state
 
     def _mining(
         self, campaigns: list[DropsCampaign], channel: Channel | None

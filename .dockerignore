@@ -16,6 +16,7 @@ lang/
 __pycache__/
 *.pyc
 test_*.py
+web_debug.py
 *.spec
 .cache/
 *.log
