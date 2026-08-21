@@ -235,6 +235,7 @@ class WebGUIManager:
                 raise ValueError("WEB_PUBLIC_URL must be an absolute HTTP(S) URL")
         self._index_path = Path(__file__).with_name("web").joinpath("index.html")
         self._icons_path = Path(__file__).with_name("icons")
+        self._hot_reload = os.environ.get("WEB_HOT_RELOAD") == "1"
         self._csrf_token = token_urlsafe(32)
         self._activity: deque[dict[str, str]] = deque(maxlen=100)
         self._games: set[str] = set()
@@ -320,6 +321,7 @@ class WebGUIManager:
             [
                 web.get("/", self._index),
                 web.get("/icons/{icon}.ico", self._favicon),
+                web.get("/api/ui-version", self._ui_version),
                 web.get("/api/state", self._get_state),
                 web.post("/api/auth/reconnect", self._reconnect),
                 web.post("/api/refresh", self._refresh),
@@ -360,6 +362,12 @@ class WebGUIManager:
 
     async def _get_state(self, request: web.Request) -> web.Response:
         return web.json_response(self.snapshot(), headers={"Cache-Control": "no-store"})
+
+    async def _ui_version(self, request: web.Request) -> web.Response:
+        return web.json_response(
+            {"enabled": self._hot_reload, "version": self._index_path.stat().st_mtime_ns},
+            headers={"Cache-Control": "no-store"},
+        )
 
     async def _favicon(self, request: web.Request) -> web.StreamResponse:
         icon = request.match_info["icon"]

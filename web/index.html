@@ -347,7 +347,8 @@
     $('mining-enabled').addEventListener('change',async event=>{event.target.disabled=true;try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(settingsPayload())})}catch(error){event.target.checked=!event.target.checked;showError(error.message)}finally{event.target.disabled=false}});
     $('mine-unlinked-campaigns').addEventListener('change',async event=>{event.target.disabled=true;try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(settingsPayload())})}catch(error){event.target.checked=!event.target.checked;showError(error.message)}finally{event.target.disabled=false}});
     $('settings-form').addEventListener('submit',async event=>{event.preventDefault();const note=$('save-note');clearTimeout(saveTimer);note.textContent='Saving…';try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(settingsPayload())});note.textContent='Saved. Settings applied.';saveTimer=setTimeout(()=>{note.textContent=''},3500)}catch(error){note.textContent='';showError(error.message)}});
-    showView(['dashboard','inventory','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'dashboard');refreshState();setInterval(refreshState,3000);
+    async function enableHotReload(){try{const {enabled,version}=await api('/api/ui-version');if(!enabled)return;setInterval(async()=>{const update=await api('/api/ui-version');if(update.version!==version)location.reload()},1000)}catch{}}
+    showView(['dashboard','inventory','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'dashboard');refreshState();enableHotReload();setInterval(refreshState,3000);
   </script>
 </body>
 </html>

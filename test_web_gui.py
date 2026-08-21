@@ -211,7 +211,10 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
             port = sock.getsockname()[1]
 
         twitch = _Twitch()
-        with patch.dict(os.environ, {"WEB_HOST": "127.0.0.1", "WEB_PORT": str(port)}):
+        with patch.dict(
+            os.environ,
+            {"WEB_HOST": "127.0.0.1", "WEB_PORT": str(port), "WEB_HOT_RELOAD": "1"},
+        ):
             gui = WebGUIManager(cast(Twitch, twitch))
         gui.start()
 
@@ -228,6 +231,10 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(state["campaigns"], [])
             csrf_headers = {"X-CSRF-Token": state["csrf_token"]}
+            async with session.get(f"http://127.0.0.1:{port}/api/ui-version") as response:
+                ui_version = await response.json()
+            self.assertTrue(ui_version["enabled"])
+            self.assertIsInstance(ui_version["version"], int)
             async with session.get(f"http://127.0.0.1:{port}/icons/active.ico") as response:
                 self.assertEqual(response.status, 200)
             async with session.post(
