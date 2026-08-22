@@ -91,7 +91,12 @@
     .dashboard-left > .panel:first-child .panel-body { display:flex; min-height:0; flex:1; overflow:hidden; }
     .channels-panel { display:flex; flex-direction:column; contain:size; }
     .channels-panel .panel-head { min-height:64px; }
-    .channels-panel .table-wrap { min-height:0; flex:1; overflow:auto; }
+    .channels-panel .table-wrap { position:relative; min-height:0; flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .channels-panel .channels-table { display:flex; flex:1; min-height:100%; min-width:100%; flex-direction:column; table-layout:fixed; }
+    .channels-panel .channels-table thead { display:table; flex:0 0 auto; width:100%; table-layout:fixed; }
+    .channels-panel .channels-table tbody { display:block; flex:1; min-height:0; overflow-y:auto; width:100%; }
+    .channels-panel .channels-table tbody tr { display:table; width:100%; table-layout:fixed; }
+    .channels-panel .table-wrap > .empty { position:absolute; inset:0; }
     .activity-panel { height:auto; min-height:0; margin-top:16px; display:flex; flex-direction:column; }
     .activity-panel .panel-body { min-height:0; flex:1; }
     .mining-grid { display:grid; grid-template-columns:108px minmax(200px,.75fr) minmax(300px,1.25fr); gap:20px; align-items:start; width:100%; height:100%; min-height:0; }
