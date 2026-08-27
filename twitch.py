@@ -1439,9 +1439,11 @@ class Twitch:
             ]
         )
         fetched_data: dict[str, JsonType] = {
-            (campaign_data := response_json["data"]["user"]["dropCampaign"])["id"]: campaign_data
+            campaign_data["id"]: campaign_data
             for response_json in response_list
+            if (campaign_data := response_json["data"]["user"]["dropCampaign"]) is not None
         }
+        campaign_ids = {cid: campaign_ids[cid] for cid in fetched_data}
         return self._merge_data(campaign_ids, fetched_data)
 
     async def fetch_inventory(self) -> None:

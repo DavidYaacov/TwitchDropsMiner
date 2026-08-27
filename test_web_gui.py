@@ -367,6 +367,23 @@ class TwitchConnectionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(twitch.get_active_campaigns(channel), twitch.inventory)
         self.assertIs(twitch.get_active_campaign(channel), twitch.inventory[1])
 
+    async def test_fetch_campaigns_skips_campaigns_removed_before_details_fetch(self):
+        twitch = cast(Any, object.__new__(Twitch))
+        twitch.get_auth = AsyncMock(return_value=SimpleNamespace(user_id=123))
+        twitch.gql_request = AsyncMock(
+            return_value=[
+                {"data": {"user": {"dropCampaign": None}}},
+                {"data": {"user": {"dropCampaign": {"id": "current", "game": {}}}}},
+            ]
+        )
+
+        campaigns = await Twitch.fetch_campaigns(
+            twitch,
+            [("removed", {"id": "removed"}), ("current", {"id": "current"})],
+        )
+
+        self.assertEqual(campaigns, {"current": {"id": "current", "game": {}}})
+
     async def test_revoke_auth_clears_session_and_restarts(self):
         twitch = cast(Any, object.__new__(Twitch))
         auth = SimpleNamespace(access_token="token", invalidate=Mock())
