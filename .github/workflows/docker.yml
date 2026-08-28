@@ -52,6 +52,7 @@ jobs:
             type=ref,event=pr
             type=raw,value=${{ steps.app_version.outputs.version }},enable=${{ github.ref == 'refs/heads/docker' }}
             type=sha,prefix=${{ steps.app_version.outputs.version }}-,enable=${{ github.ref == 'refs/heads/docker' }}
+            type=raw,value=${{ steps.app_version.outputs.version }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/docker' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/docker' }}
 
       - name: Build and push Docker image
