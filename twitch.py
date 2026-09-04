@@ -78,8 +78,8 @@ def safe_loads(s: str) -> Any:
 
 
 class _AuthState:
-    def __init__(self, twitch: Twitch):
-        self._twitch: Twitch = twitch
+    def __init__(self, twitch: "Twitch"):
+        self._twitch: "Twitch" = twitch
         self._lock = asyncio.Lock()
         self._logged_in = asyncio.Event()
         self.user_id: int
@@ -1390,6 +1390,7 @@ class Twitch:
                                 "service timeout",
                                 "service unavailable",
                                 "context deadline exceeded",
+                                "request cancelled",
                             ):
                                 force_retry = True
                                 break
