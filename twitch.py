@@ -1386,11 +1386,13 @@ class Twitch:
                                     data_dict = data_dict[key]
                                 data_dict[path[-1]] = None
                                 break
-                            elif error_dict["message"] in (
-                                "service timeout",
-                                "service unavailable",
-                                "context deadline exceeded",
-                                "request cancelled",
+                            elif (
+                                error_dict["message"] in (
+                                    "service timeout",
+                                    "request cancelled",
+                                    "service unavailable",
+                                    "context deadline exceeded",
+                                )
                             ):
                                 force_retry = True
                                 break
