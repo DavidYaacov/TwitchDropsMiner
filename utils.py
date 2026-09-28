@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import os
 import re
 import sys
 import json
@@ -10,8 +9,6 @@ import string
 import asyncio
 import logging
 import traceback
-import webbrowser
-import tkinter as tk
 from enum import Enum
 from pathlib import Path
 from functools import wraps
@@ -19,15 +16,22 @@ from contextlib import suppress
 from functools import cached_property
 from datetime import datetime, timezone
 from collections import abc, OrderedDict
-from typing import Any, Literal, Callable, Generic, Mapping, TypeVar, ParamSpec, cast
+from typing import (
+    Any,
+    Literal,
+    Callable,
+    Generic,
+    Mapping,
+    TypeVar,
+    ParamSpec,
+    cast,
+    overload,
+)
 
 from yarl import URL
-from PIL.ImageTk import PhotoImage
-from PIL import Image as Image_module
 
 from exceptions import ExitRequest, ReloadRequest
-from constants import IS_PACKAGED, JsonType, PriorityMode
-from constants import _resource_path as resource_path  # noqa
+from constants import JsonType, PriorityMode
 
 
 _T = TypeVar("_T")  # type
@@ -35,14 +39,6 @@ _D = TypeVar("_D")  # default
 _P = ParamSpec("_P")  # params
 _JSON_T = TypeVar("_JSON_T", bound=Mapping[Any, Any])
 logger = logging.getLogger("TwitchDrops")
-
-
-def set_root_icon(root: tk.Tk, image_path: Path | str) -> None:
-    with Image_module.open(image_path) as image:
-        icon_photo = PhotoImage(master=root, image=image)
-    root.iconphoto(True, icon_photo)  # type: ignore[arg-type]
-    # keep a reference to the PhotoImage to avoid the ResourceWarning
-    root._icon_image = icon_photo  # type: ignore[attr-defined]
 
 
 async def first_to_complete(coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) -> _T:
@@ -59,7 +55,7 @@ async def first_to_complete(coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) ->
 def chunk(to_chunk: abc.Iterable[_T], chunk_length: int) -> abc.Generator[list[_T], None, None]:
     list_to_chunk = list(to_chunk)
     for i in range(0, len(list_to_chunk), chunk_length):
-        yield list_to_chunk[i:i + chunk_length]
+        yield list_to_chunk[i : i + chunk_length]
 
 
 def format_traceback(exc: BaseException, **kwargs: Any) -> str:
@@ -67,15 +63,16 @@ def format_traceback(exc: BaseException, **kwargs: Any) -> str:
     Like `traceback.print_exc` but returns a string. Uses the passed-in exception.
     Any additional `**kwargs` are passed to the underlaying `traceback.format_exception`.
     """
-    return ''.join(traceback.format_exception(type(exc), exc, **kwargs))
+    return "".join(traceback.format_exception(type(exc), exc, **kwargs))
 
 
 def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
-    file = path.open('w', encoding="utf8")
-    file.write('ツ')
+    file = path.open("w", encoding="utf8")
+    file.write("ツ")
     file.flush()
     if sys.platform == "win32":
         import msvcrt
+
         try:
             # we need to lock at least one byte for this to work
             msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, max(path.stat().st_size, 1))
@@ -84,6 +81,7 @@ def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
         return True, file
     if sys.platform in ("linux", "darwin"):
         import fcntl
+
         try:
             fcntl.lockf(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except Exception:
@@ -97,7 +95,7 @@ def json_minify(data: JsonType | list[JsonType]) -> str:
     """
     Returns minified JSON for payload usage.
     """
-    return json.dumps(data, separators=(',', ':'))
+    return json.dumps(data, separators=(",", ":"))
 
 
 def timestamp(string: str) -> datetime:
@@ -108,7 +106,7 @@ def timestamp(string: str) -> datetime:
 
 
 def isonow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", 'Z')
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 CHARS_ASCII = string.ascii_letters + string.digits
@@ -117,19 +115,42 @@ CHARS_HEX_UPPER = string.digits + "ABCDEF"
 
 
 def create_nonce(chars: str, length: int) -> str:
-    return ''.join(random.choices(chars, k=length))
+    return "".join(random.choices(chars, k=length))
 
 
 def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
     return list(OrderedDict.fromkeys(iterable).keys())
 
 
+@overload
 def task_wrapper(
-    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]] | None = None, *, critical: bool = False
+    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]], *, critical: bool = False
+) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]: ...
+
+
+@overload
+def task_wrapper(
+    afunc: None = None, *, critical: bool = False
+) -> abc.Callable[
+    [abc.Callable[_P, abc.Coroutine[Any, Any, Any]]],
+    abc.Callable[_P, abc.Coroutine[Any, Any, None]],
+]: ...
+
+
+def task_wrapper(
+    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]] | None = None,
+    *,
+    critical: bool = False,
+) -> (
+    abc.Callable[_P, abc.Coroutine[Any, Any, None]]
+    | abc.Callable[
+        [abc.Callable[_P, abc.Coroutine[Any, Any, Any]]],
+        abc.Callable[_P, abc.Coroutine[Any, Any, None]],
+    ]
 ):
     def decorator(
-        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]]
-    ) -> abc.Callable[_P, abc.Coroutine[Any, Any, _T]]:
+        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, Any]],
+    ) -> abc.Callable[_P, abc.Coroutine[Any, Any, None]]:
         @wraps(afunc)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs):
             try:
@@ -143,6 +164,7 @@ def task_wrapper(
                     # there isn't an easy and sure way to obtain the Twitch instance here,
                     # but we can improvise finding it
                     from twitch import Twitch  # cyclic import
+
                     probe = args and args[0] or None  # extract from 'self' arg
                     if isinstance(probe, Twitch):
                         probe.close()
@@ -151,7 +173,9 @@ def task_wrapper(
                         if isinstance(probe, Twitch):
                             probe.close()
                 raise  # raise up to the wrapping task
+
         return wrapper
+
     if afunc is None:
         return decorator
     return decorator(afunc)
@@ -247,14 +271,14 @@ def json_load(path: Path, defaults: _JSON_T, *, merge: bool = True) -> _JSON_T:
     # try new file first
     if new_path.exists():
         try:
-            with new_path.open('r', encoding="utf8") as file:
+            with new_path.open("r", encoding="utf8") as file:
                 combined = _remove_missing(json.load(file, object_hook=_deserialize))
         except json.JSONDecodeError:
             # remove invalid file
             new_path.unlink()
     # try the old file
     if combined is None and path.exists():
-        with path.open('r', encoding="utf8") as file:
+        with path.open("r", encoding="utf8") as file:
             combined = _remove_missing(json.load(file, object_hook=_deserialize))
     # handle defaults and merging
     if combined is None:
@@ -266,35 +290,9 @@ def json_load(path: Path, defaults: _JSON_T, *, merge: bool = True) -> _JSON_T:
 
 def json_save(path: Path, contents: Mapping[Any, Any], *, sort: bool = False) -> None:
     new_path: Path = path.with_name(f"{path.name}.new")
-    with new_path.open('w', encoding="utf8") as file:
+    with new_path.open("w", encoding="utf8") as file:
         json.dump(contents, file, default=_serialize, sort_keys=sort, indent=4)
     new_path.replace(path)
-
-
-def webopen(url: URL | str):
-    url_str = str(url)
-    if IS_PACKAGED and sys.platform == "linux":
-        # https://pyinstaller.org/en/stable/
-        # runtime-information.html#ld-library-path-libpath-considerations
-        # NOTE: All 4 cases need to be handled here: either of the two values can be there or not.
-        ld_env = "LD_LIBRARY_PATH"
-        ld_path_curr = os.environ.get(ld_env)
-        ld_path_orig = os.environ.get(f"{ld_env}_ORIG")
-        if ld_path_orig is not None:
-            os.environ[ld_env] = ld_path_orig
-        elif ld_path_curr is not None:
-            # pop current
-            os.environ.pop(ld_env)
-
-        webbrowser.open_new_tab(url_str)
-
-        if ld_path_curr is not None:
-            os.environ[ld_env] = ld_path_curr
-        elif ld_path_orig is not None:
-            # pop original
-            os.environ.pop(ld_env)
-    else:
-        webbrowser.open_new_tab(url_str)
 
 
 class ExponentialBackoff:
@@ -329,8 +327,7 @@ class ExponentialBackoff:
 
     def __next__(self) -> float:
         value: float = (
-            pow(self.base, self.steps)
-            * random.uniform(self.variance_min, self.variance_max)
+            pow(self.base, self.steps) * random.uniform(self.variance_min, self.variance_max)
             + self.shift
         )
         if value > self.maximum:
@@ -447,11 +444,11 @@ class Game:
         Converts the game name into a slug, useable for the GQL API.
         """
         # remove specific characters
-        slug_text = re.sub(r'\'', '', self.name.lower())
+        slug_text = re.sub(r"\'", "", self.name.lower())
         # remove non alpha-numeric characters
-        slug_text = re.sub(r'\W+', '-', slug_text)
+        slug_text = re.sub(r"\W+", "-", slug_text)
         # strip and collapse dashes
-        slug_text = re.sub(r'-{2,}', '-', slug_text.strip('-'))
+        slug_text = re.sub(r"-{2,}", "-", slug_text.strip("-"))
         return slug_text
 
     def is_special(self) -> bool:

@@ -1,0 +1,69 @@
+name: Build Docker Image
+
+# This workflow builds and pushes the Docker image only to GitHub Container Registry (ghcr.io)
+# It does not push to Docker Hub or any other registry.
+
+on:
+  push:
+    branches:
+      - "docker"
+  pull_request:
+    branches:
+      - "docker"
+  workflow_dispatch:
+
+jobs:
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        run: docker run --privileged --rm tonistiigi/binfmt --install all
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Read application version
+        id: app_version
+        shell: bash
+        run: echo "version=v$(python3 -c 'from version import __version__; print(__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=pr
+            type=raw,value=${{ steps.app_version.outputs.version }},enable=${{ github.ref == 'refs/heads/docker' }}
+            type=sha,prefix=${{ steps.app_version.outputs.version }}-,enable=${{ github.ref == 'refs/heads/docker' }}
+            type=raw,value=${{ steps.app_version.outputs.version }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/docker' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/docker' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            TDM_COMMIT_SHA=${{ github.sha }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

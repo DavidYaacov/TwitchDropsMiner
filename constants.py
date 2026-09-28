@@ -19,42 +19,9 @@ if TYPE_CHECKING:
     from typing_extensions import TypeAlias
 
 
-# True if we're running from a built EXE (or a Linux AppImage), False inside a dev build
-IS_APPIMAGE = "APPIMAGE" in os.environ and os.path.exists(os.environ["APPIMAGE"])
-IS_PACKAGED = hasattr(sys, "_MEIPASS") or IS_APPIMAGE
 # logging special levels
 CALL: int = logging.INFO - 1
 logging.addLevelName(CALL, "CALL")
-# site-packages venv path changes depending on the system platform
-if sys.platform == "win32":
-    SYS_SITE_PACKAGES = "Lib/site-packages"
-else:
-    # On Linux, the site-packages path includes a versioned 'pythonX.Y' folder part
-    # The Lib folder is also spelled in lowercase: 'lib'
-    version_info = sys.version_info
-    SYS_SITE_PACKAGES = f"lib/python{version_info.major}.{version_info.minor}/site-packages"
-# scripts venv path changes depending on the system platform
-if sys.platform == "win32":
-    SYS_SCRIPTS = "Scripts"
-else:
-    SYS_SCRIPTS = "bin"
-
-
-def _resource_path(relative_path: Path | str) -> Path:
-    """
-    Get an absolute path to a bundled resource.
-
-    Works for dev and for PyInstaller.
-    """
-    if IS_APPIMAGE:
-        base_path = Path(sys.argv[0]).resolve().parent
-    elif IS_PACKAGED:
-        # PyInstaller's folder where the one-file app is unpacked
-        meipass: str = getattr(sys, "_MEIPASS")
-        base_path = Path(meipass)
-    else:
-        base_path = WORKING_DIR
-    return base_path.joinpath(relative_path)
 
 
 def _merge_vars(base_vars: JsonType, vars: JsonType) -> None:
@@ -81,30 +48,12 @@ def _merge_vars(base_vars: JsonType, vars: JsonType) -> None:
             raise RuntimeError(f"Unspecified variable: '{k}'")
 
 
-# Base Paths
-if IS_APPIMAGE:
-    SELF_PATH = Path(os.environ["APPIMAGE"]).resolve()
-else:
-    # NOTE: pyinstaller will set sys.argv[0] to its own executable when building
-    # NOTE: sys.argv[0] will point to gui.py when running the gui.py directly for GUI debug
-    # detect these and use __file__ and main.py redirection instead
-    SELF_PATH = Path(sys.argv[0]).resolve()
-    if SELF_PATH.stem == "pyinstaller" or SELF_PATH.name == "gui.py":
-        SELF_PATH = Path(__file__).with_name("main.py").resolve()
-WORKING_DIR = SELF_PATH.parent
-# Development paths
-VENV_PATH = Path(WORKING_DIR, "env")
-SITE_PACKAGES_PATH = Path(VENV_PATH, SYS_SITE_PACKAGES)
-SCRIPTS_PATH = Path(VENV_PATH, SYS_SCRIPTS)
-# Translations path
-# NOTE: These don't have to be available to the end-user, so the path points to the internal dir
-LANG_PATH = _resource_path("lang")
+SELF_PATH = Path(sys.argv[0]).resolve()
+WORKING_DIR = Path(os.environ.get("TDM_DATA_DIR", SELF_PATH.parent)).resolve()
 # Other Paths
 LOG_PATH = Path(WORKING_DIR, "log.txt")
 DUMP_PATH = Path(WORKING_DIR, "dump.dat")
 LOCK_PATH = Path(WORKING_DIR, "lock.file")
-CACHE_PATH = Path(WORKING_DIR, "cache")
-CACHE_DB = Path(CACHE_PATH, "mapping.json")
 COOKIES_PATH = Path(WORKING_DIR, "cookies.jar")
 SETTINGS_PATH = Path(WORKING_DIR, "settings.json")
 # Typing
@@ -122,7 +71,6 @@ TOPICS_PER_CHANNEL = 2
 MAX_TOPICS = (MAX_WEBSOCKETS * WS_TOPICS_LIMIT) - BASE_TOPICS
 MAX_CHANNELS = MAX_TOPICS // TOPICS_PER_CHANNEL
 # Misc
-DEFAULT_LANG = "English"
 # Intervals and Delays
 PING_INTERVAL = timedelta(minutes=3)
 PING_TIMEOUT = timedelta(seconds=10)
@@ -140,10 +88,10 @@ LOGGING_LEVELS = {
 }
 FILE_FORMATTER = logging.Formatter(
     "{asctime}.{msecs:03.0f}:\t{levelname:>7}:\t{message}",
-    style='{',
+    style="{",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style='{', datefmt="%H:%M:%S")
+OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style="{", datefmt="%H:%M:%S")
 
 
 class ClientInfo:
@@ -203,7 +151,7 @@ class ClientType:
                 "Mozilla/5.0 (Linux; Android 16; LM-X420) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/153.0.7204.158 Mobile Safari/537.36"
             ),
-        ]
+        ],
     )
     ANDROID_APP = ClientInfo(
         URL("https://www.twitch.tv"),
@@ -237,7 +185,7 @@ class ClientType:
                 "Dalvik/2.1.0 (Linux; U; Android 14; SM-X306B Build/UP1A.231005.007) "
                 "tv.twitch.android.app/25.3.0/2503006"
             ),
-        ]
+        ],
     )
     SMARTBOX = ClientInfo(
         URL("https://android.tv.twitch.tv"),
@@ -276,7 +224,7 @@ class GQLQuery(JsonType):
                     "repository": "twilight",
                     "encoding": "GZIP_B64",
                 }
-            }
+            },
         )
 
 
@@ -289,7 +237,7 @@ class GQLPersistedQuery(JsonType):
                     "version": 1,
                     "sha256Hash": sha256,
                 }
-            }
+            },
         )
         if variables is not None:
             self.__setitem__("variables", variables)
@@ -348,7 +296,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404",
         variables={
             "fetchRewardCampaigns": False,
-        }
+        },
     ),
     # returns current state of drops (current drop progress)
     "CurrentDrop": GQLPersistedQuery(
@@ -365,7 +313,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "c16bb890cc8ce7647a96ee69cd313d423a378a3dedadf630a1017cde18975feb",
         variables={
             "fetchRewardCampaigns": False,
-        }
+        },
     ),
     # returns extended information about a particular campaign
     "CampaignDetails": GQLPersistedQuery(
@@ -470,9 +418,7 @@ class WebsocketTopic:
         self._process: TopicProcess = process
 
     @classmethod
-    def as_str(
-        cls, category: Literal["User", "Channel"], topic_name: str, target_id: int
-    ) -> str:
+    def as_str(cls, category: Literal["User", "Channel"], topic_name: str, target_id: int) -> str:
         return f"{WEBSOCKET_TOPICS[category][topic_name]}.{target_id}"
 
     def __call__(self, message: JsonType):

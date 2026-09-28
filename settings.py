@@ -5,7 +5,7 @@ from typing import Any, TypedDict, TYPE_CHECKING
 from yarl import URL
 
 from utils import json_load, json_save
-from constants import SETTINGS_PATH, DEFAULT_LANG, PriorityMode
+from constants import SETTINGS_PATH, PriorityMode
 
 if TYPE_CHECKING:
     from main import ParsedArgs
@@ -13,30 +13,34 @@ if TYPE_CHECKING:
 
 class SettingsFile(TypedDict):
     proxy: URL
-    language: str
-    dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
-    tray_notifications: bool
+    mining_enabled: bool
     enable_badges_emotes: bool
+    mine_unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    ntfy_server: str
+    ntfy_topic: str
+    ntfy_token: str
+    ntfy_enabled: bool
 
 
 default_settings: SettingsFile = {
     "proxy": URL(),
     "priority": [],
     "exclude": set(),
-    "dark_mode": False,
-    "autostart_tray": False,
     "connection_quality": 1,
-    "language": DEFAULT_LANG,
-    "tray_notifications": True,
+    "mining_enabled": True,
     "enable_badges_emotes": False,
+    "mine_unlinked_campaigns": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
+    "ntfy_server": "https://ntfy.sh",
+    "ntfy_topic": "",
+    "ntfy_token": "",
+    "ntfy_enabled": False,
 }
 
 
@@ -51,16 +55,18 @@ class Settings:
     logging_level: int
     # from settings file
     proxy: URL
-    language: str
-    dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
-    tray_notifications: bool
+    mining_enabled: bool
     enable_badges_emotes: bool
+    mine_unlinked_campaigns: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    ntfy_server: str
+    ntfy_topic: str
+    ntfy_token: str
+    ntfy_enabled: bool
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 

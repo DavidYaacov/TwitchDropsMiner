@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from collections import abc
 
     from twitch import Twitch
-    from gui import WebsocketStatus
     from constants import JsonType, WebsocketTopic
 
 
@@ -40,7 +39,7 @@ class Websocket:
     def __init__(self, pool: WebsocketPool, index: int):
         self._pool: WebsocketPool = pool
         self._twitch: Twitch = pool._twitch
-        self._ws_gui: WebsocketStatus = self._twitch.gui.websockets
+        self._ws_gui: Any = self._twitch.gui.websockets
         self._state_lock = asyncio.Lock()
         # websocket index
         self._idx: int = index
@@ -71,7 +70,9 @@ class Websocket:
 
     def set_status(self, status: str | None = None, refresh_topics: bool = False):
         self._twitch.gui.websockets.update(
-            self._idx, status=status, topics=(len(self.topics) if refresh_topics else None)
+            self._idx,
+            status=status,
+            topics=(len(self.topics) if refresh_topics else None),
         )
 
     def request_reconnect(self):
@@ -151,7 +152,8 @@ class Websocket:
         self._closed.clear()
         # Connect/Reconnect loop
         async for websocket in self._backoff_connect(
-            "wss://pubsub-edge.twitch.tv/v1", maximum=3*60  # 3 minutes maximum backoff time
+            "wss://pubsub-edge.twitch.tv/v1",
+            maximum=3 * 60,  # 3 minutes maximum backoff time
         ):
             self._ws.set(websocket)
             self._reconnect_requested.clear()
@@ -218,7 +220,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.difference_update(removed)
@@ -234,7 +236,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.update(added)

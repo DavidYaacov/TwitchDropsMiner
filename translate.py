@@ -4,8 +4,9 @@ from collections import abc
 from typing import Any, TypedDict, TYPE_CHECKING
 
 from exceptions import MinerException
-from utils import json_load, json_save
-from constants import IS_PACKAGED, LANG_PATH, DEFAULT_LANG
+
+
+DEFAULT_LANG = "English"
 
 if TYPE_CHECKING:
     from typing_extensions import NotRequired
@@ -425,19 +426,19 @@ default_translation: Translation = {
                 "2. Ensure your Twitch account is linked to all campaigns "
                 "you're interested in mining.\n"
                 "3. If you're interested in mining everything possible, "
-                "change the Priority Mode to anything other than \"Priority list only\" "
-                "and press on \"Reload\".\n"
-                "4. If you want to mine specific games first, use the \"Priority\" list "
+                'change the Priority Mode to anything other than "Priority list only" '
+                'and press on "Reload".\n'
+                '4. If you want to mine specific games first, use the "Priority" list '
                 "to set up an ordered list of games of your choice. "
                 "Games from the top of the list will be attempted to be mined first, "
                 "before the ones lower down the list.\n"
-                "5. Keep the \"Priority mode\" selected as \"Priority list only\", "
+                '5. Keep the "Priority mode" selected as "Priority list only", '
                 "to avoid mining games that are not on the priority list. "
                 "Or not - it's up to you.\n"
-                "6. Use the \"Exclude\" list to tell the application "
+                '6. Use the "Exclude" list to tell the application '
                 "which games should never be mined.\n"
                 "7. Changing the contents of either of the lists, or changing "
-                "the \"Priority mode\", requires you to press on \"Reload\" "
+                'the "Priority mode", requires you to press on "Reload" '
                 "for the changes to take an effect."
             ),
             "invalidate": {
@@ -451,21 +452,9 @@ default_translation: Translation = {
 
 class Translator:
     def __init__(self) -> None:
-        self._langs: list[str] = []
-        # start with (and always copy) the default translation
+        self._langs = [DEFAULT_LANG]
         self._translation: Translation = default_translation.copy()
-        # if we're in dev, update the template English.json file
-        if not IS_PACKAGED:
-            default_langpath = LANG_PATH.joinpath(f"{DEFAULT_LANG}.json")
-            json_save(default_langpath, default_translation)
         self._translation["language_name"] = DEFAULT_LANG
-        # load available translation names
-        for filepath in LANG_PATH.glob("*.json"):
-            self._langs.append(filepath.stem)
-        self._langs.sort()
-        if DEFAULT_LANG in self._langs:
-            self._langs.remove(DEFAULT_LANG)
-        self._langs.insert(0, DEFAULT_LANG)
 
     @property
     def languages(self) -> abc.Iterable[str]:
@@ -473,23 +462,15 @@ class Translator:
 
     @property
     def current(self) -> str:
-        return self._translation["language_name"]
+        return self._translation.get("language_name", DEFAULT_LANG)
 
     def set_language(self, language: str):
         if language not in self._langs:
             raise ValueError("Unrecognized language")
-        elif self._translation["language_name"] == language:
+        elif self._translation.get("language_name", DEFAULT_LANG) == language:
             # same language as loaded selected
             return
-        elif language == DEFAULT_LANG:
-            # default language selected - use the memory value
-            self._translation = default_translation.copy()
-        else:
-            self._translation = json_load(
-                LANG_PATH.joinpath(f"{language}.json"), default_translation
-            )
-            if "language_name" in self._translation:
-                raise ValueError("Translations cannot define 'language_name'")
+        self._translation = default_translation.copy()
         self._translation["language_name"] = language
 
     def __call__(self, *path: str) -> str:
