@@ -1,10 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 ARG TDM_COMMIT_SHA=unknown
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --root-user-action=ignore "aiohttp>=3.9,<4.0" truststore
+COPY requirements.txt .
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 COPY . .
 

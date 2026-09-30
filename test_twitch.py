@@ -2,10 +2,17 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from constants import ClientType
 from twitch import Twitch
 
 
 class GqlRequestTests(unittest.IsolatedAsyncioTestCase):
+    async def test_smartbox_is_the_default_device_code_client(self):
+        with patch("twitch.WebGUIManager"):
+            client = Twitch(SimpleNamespace())
+
+        self.assertIs(client._client_type, ClientType.SMARTBOX)
+
     async def test_request_cancelled_is_retried(self):
         responses = iter(
             [

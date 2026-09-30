@@ -104,8 +104,8 @@ async def main(args: ParsedArgs, settings: Settings) -> int:
 
 
 if __name__ == "__main__":
-    if sys.version_info < (3, 10):
-        raise RuntimeError("Python 3.10 or higher is required")
+    if sys.version_info < (3, 13):
+        raise RuntimeError("Python 3.13 or higher is required")
     truststore.inject_into_ssl()
     warnings.simplefilter("default", ResourceWarning)
 
