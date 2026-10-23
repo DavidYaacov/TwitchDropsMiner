@@ -119,3 +119,10 @@ else.
 
 Twitch Drops Miner was originally created by
 [DevilXD](https://github.com/DevilXD/TwitchDropsMiner).
+
+October 2026 compatibility fixes were adapted from
+[Asrus21/TwitchDropsMiner](https://github.com/Asrus21/TwitchDropsMiner), including
+PRs [#1](https://github.com/Asrus21/TwitchDropsMiner/pull/1),
+[#2](https://github.com/Asrus21/TwitchDropsMiner/pull/2), and
+[#4](https://github.com/Asrus21/TwitchDropsMiner/pull/4).
+See [COMPATIBILITY.md](COMPATIBILITY.md) for detailed provenance and migration notes.
