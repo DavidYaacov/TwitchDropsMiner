@@ -196,6 +196,20 @@ class ClientType:
         ),
     )
 
+    @classmethod
+    def by_name(cls) -> dict[str, ClientInfo]:
+        return {
+            "SMARTBOX": cls.SMARTBOX,
+            "MOBILE_WEB": cls.MOBILE_WEB,
+            "ANDROID_APP": cls.ANDROID_APP,
+            "WEB": cls.WEB,
+        }
+
+
+DEFAULT_CLIENT_TYPE = "SMARTBOX"
+DISCOVERY_MAX_GAMES = 25
+DISCOVERY_CHANNELS_PER_GAME = 30
+
 
 class State(Enum):
     IDLE = auto()

@@ -14,7 +14,7 @@ from yarl import URL
 
 from utils import Game, json_minify, isonow
 from exceptions import MinerException, RequestException
-from constants import CALL, GQL_QUERIES, ONLINE_DELAY, URLType, GQLQuery
+from constants import GQL_QUERIES, ONLINE_DELAY, URLType, GQLQuery
 
 if TYPE_CHECKING:
     from twitch import Twitch
@@ -37,7 +37,7 @@ class Stream:
         self.channel: Channel = channel
         self.broadcast_id = int(id)
         self.viewers: int = viewers
-        self.drops_enabled: bool = not channel._twitch.settings.available_drops_check
+        self.drops_enabled: bool = True
         self.game: Game | None = Game(game) if game else None
         self.title: str = title
         self._stream_url: URLType | None = None
@@ -242,7 +242,7 @@ class Channel:
 
     @property
     def url(self) -> URLType:
-        return URLType(f"{self._twitch._client_type.CLIENT_URL}/{self._login}")
+        return URLType(f"https://www.twitch.tv/{self._login}")
 
     @property
     def iid(self) -> str:
@@ -333,13 +333,17 @@ class Channel:
     def _check_drops_enabled(self, available_drops: list[JsonType]) -> bool:
         return any(
             (
-                (campaign := self._twitch._campaigns.get(campaign_data["id"])) is not None
+                (campaign := self._twitch._campaigns.get(campaign_data.get("id"))) is not None
                 and campaign.can_earn(self, ignore_channel_status=True)
             )
             for campaign_data in available_drops
         )
 
-    def external_update(self, channel_data: JsonType, available_drops: list[JsonType]):
+    def update_available_drops(self, available_drops: list[JsonType]) -> None:
+        if self._stream is not None:
+            self._stream.drops_enabled = self._check_drops_enabled(available_drops)
+
+    def external_update(self, channel_data: JsonType):
         """
         Update stream information based on data provided externally.
 
@@ -348,10 +352,7 @@ class Channel:
         if not channel_data["stream"]:
             self._stream = None
             return
-        stream = Stream.from_get_stream(self, channel_data)
-        if not stream.drops_enabled:
-            stream.drops_enabled = self._check_drops_enabled(available_drops)
-        self._stream = stream
+        self._stream = Stream.from_get_stream(self, channel_data)
 
     async def get_stream(self) -> Stream | None:
         try:
@@ -367,17 +368,11 @@ class Channel:
         if not channel_data["stream"]:
             return None
         stream = Stream.from_get_stream(self, channel_data)
-        if not stream.drops_enabled:
-            try:
-                available_drops_campaigns: JsonType = await self._twitch.gql_request(
-                    GQL_QUERIES["AvailableDrops"].with_variables({"channelID": str(self.id)})
-                )
-            except MinerException:
-                logger.log(CALL, f"AvailableDrops GQL call failed for channel: {self._login}")
-            else:
-                stream.drops_enabled = self._check_drops_enabled(
-                    available_drops_campaigns["data"]["channel"]["viewerDropCampaigns"] or []
-                )
+        settings = self._twitch.settings
+        if settings.available_drops_check or settings.campaign_discovery:
+            available = await self._twitch.fetch_available_drops([self.id])
+            if self.id in available:
+                stream.drops_enabled = self._check_drops_enabled(available[self.id])
         return stream
 
     async def update_stream(self) -> bool:
@@ -475,29 +470,20 @@ class Channel:
             if "error" in available_json:
                 logger.error(f'Send watch error: "{available_json["error"]}"')
             return False
-        # the list contains ~10-13 chunks of the stream at 2s intervals,
-        # pick the last chunk URL available. Ensure it's not the end-of-stream tag,
-        # otherwise use the 2nd to last line.
-        chunks_list: list[str] = available_chunks.strip().split("\n")
-        selected_chunk: str = chunks_list[-1]
-        if selected_chunk == "#EXT-X-ENDLIST":
-            selected_chunk = chunks_list[-2]
-        stream_chunk_url: URLType = URLType(selected_chunk)
-        # sending a HEAD request is enough to advance the drops,
-        # without downloading the actual stream data
-        async with self._twitch.request("HEAD", stream_chunk_url) as head_response:
-            return head_response.status == 200
+        chunks_list = [
+            line.strip()
+            for line in available_chunks.splitlines()
+            if line.strip().startswith(("https://", "http://"))
+        ]
+        for stream_chunk_url in chunks_list:
+            async with self._twitch.request("HEAD", stream_chunk_url) as head_response:
+                if head_response.status != 200:
+                    return False
+        return bool(chunks_list)
 
     async def send_watch(self) -> bool:
-        if self._stream is None:
-            return False
-        if self._spade_url is None:
-            self._spade_url = await self.get_spade_url()
         try:
-            async with self._twitch.request(
-                "POST", self._spade_url, data=self._stream.spade_payload
-            ) as response:
-                return response.status == 204
+            return await self._send_watch_playlist()
         except RequestException:
             return False
 

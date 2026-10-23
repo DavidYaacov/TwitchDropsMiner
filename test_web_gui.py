@@ -35,6 +35,8 @@ class _Settings:
         self.enable_badges_emotes = False
         self.mine_unlinked_campaigns = False
         self.available_drops_check = False
+        self.client_type = "SMARTBOX"
+        self.campaign_discovery = True
         self.ntfy_server = "https://ntfy.sh"
         self.ntfy_topic = ""
         self.ntfy_token = ""
@@ -343,6 +345,8 @@ class WebGUITest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(twitch.settings.enable_badges_emotes)
         self.assertTrue(twitch.settings.mine_unlinked_campaigns)
         self.assertTrue(twitch.settings.available_drops_check)
+        self.assertEqual(twitch.settings.client_type, "SMARTBOX")
+        self.assertTrue(twitch.settings.campaign_discovery)
         self.assertEqual(twitch.settings.ntfy_server, "https://notify.example.com")
         self.assertEqual(twitch.settings.ntfy_topic, "drops_private")
         self.assertEqual(twitch.settings.ntfy_token, "tk_secret")

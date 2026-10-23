@@ -659,6 +659,8 @@ class WebGUIManager:
                 "enable_badges_emotes": settings.enable_badges_emotes,
                 "mine_unlinked_campaigns": settings.mine_unlinked_campaigns,
                 "available_drops_check": settings.available_drops_check,
+                "client_type": settings.client_type,
+                "campaign_discovery": settings.campaign_discovery,
                 "ntfy_server": settings.ntfy_server,
                 "ntfy_topic": settings.ntfy_topic,
                 "ntfy_token": NTFY_TOKEN_MASK if settings.ntfy_token else "",

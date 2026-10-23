@@ -9,7 +9,7 @@ from twitch import Twitch
 class GqlRequestTests(unittest.IsolatedAsyncioTestCase):
     async def test_smartbox_is_the_default_device_code_client(self):
         with patch("twitch.WebGUIManager"):
-            client = Twitch(SimpleNamespace())
+            client = Twitch(SimpleNamespace(client_type="SMARTBOX"))
 
         self.assertIs(client._client_type, ClientType.SMARTBOX)
 

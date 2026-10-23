@@ -39,6 +39,9 @@ WEB_PUBLIC_URL=https://drops.example.com docker compose up -d
 
 ## Development
 
+See [COMPATIBILITY.md](COMPATIBILITY.md) for the October 2026 Twitch fixes,
+settings migration, regression tests, and Docker rollout/rollback steps.
+
 Use `run_web_dev.bat` (Windows) or `run_web_dev.sh` (Linux/macOS) to run the web UI.
 Changes to `web/index.html` reload the open browser automatically.
 

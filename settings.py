@@ -5,7 +5,7 @@ from typing import Any, TypedDict, TYPE_CHECKING
 from yarl import URL
 
 from utils import json_load, json_save
-from constants import SETTINGS_PATH, PriorityMode
+from constants import SETTINGS_PATH, DEFAULT_CLIENT_TYPE, PriorityMode
 
 if TYPE_CHECKING:
     from main import ParsedArgs
@@ -20,6 +20,8 @@ class SettingsFile(TypedDict):
     enable_badges_emotes: bool
     mine_unlinked_campaigns: bool
     available_drops_check: bool
+    client_type: str
+    campaign_discovery: bool
     priority_mode: PriorityMode
     ntfy_server: str
     ntfy_topic: str
@@ -35,7 +37,9 @@ default_settings: SettingsFile = {
     "mining_enabled": True,
     "enable_badges_emotes": False,
     "mine_unlinked_campaigns": False,
-    "available_drops_check": False,
+    "available_drops_check": True,
+    "client_type": DEFAULT_CLIENT_TYPE,
+    "campaign_discovery": True,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
     "ntfy_server": "https://ntfy.sh",
     "ntfy_topic": "",
@@ -62,6 +66,8 @@ class Settings:
     enable_badges_emotes: bool
     mine_unlinked_campaigns: bool
     available_drops_check: bool
+    client_type: str
+    campaign_discovery: bool
     priority_mode: PriorityMode
     ntfy_server: str
     ntfy_topic: str

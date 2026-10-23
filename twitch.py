@@ -53,6 +53,9 @@ from constants import (
     ClientType,
     PriorityMode,
     WebsocketTopic,
+    DEFAULT_CLIENT_TYPE,
+    DISCOVERY_MAX_GAMES,
+    DISCOVERY_CHANNELS_PER_GAME,
 )
 
 if TYPE_CHECKING:
@@ -87,6 +90,7 @@ class _AuthState:
         self.session_id: str
         self.access_token: str
         self.client_version: str
+        self._device_id_host: str | None = None
 
     def _hasattrs(self, *attrs: str) -> bool:
         return all(hasattr(self, attr) for attr in attrs)
@@ -118,10 +122,8 @@ class _AuthState:
         self._logged_in.clear()
         self._twitch.gui.help._invalidate_button.config(state="disabled")
 
-    async def _oauth_login(self) -> str:
-        login_form: Any = self._twitch.gui.login
-        client_info: ClientInfo = self._twitch._client_type
-        headers = {
+    def _login_headers(self, client_info: ClientInfo) -> JsonType:
+        return {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "Accept-Language": "en-US",
@@ -134,38 +136,92 @@ class _AuthState:
             "User-Agent": client_info.USER_AGENT,
             "X-Device-Id": self.device_id,
         }
-        payload = {
-            "client_id": client_info.CLIENT_ID,
-            "scopes": "",  # no scopes needed
-        }
+
+    async def _request_device_code(self) -> JsonType:
+        """
+        Starts the device code login, trying every known client until Twitch accepts one.
+
+        Twitch answers `{"status": 400, "message": "invalid client"}` for client IDs it has
+        retired from this flow (the Android app one, since September 2026). The first
+        accepted client becomes the one in use, and is remembered in the settings.
+        """
+        twitch = self._twitch
+        clients: dict[str, ClientInfo] = ClientType.by_name()
+        names: list[str] = [twitch.client_type_name]
+        names.extend(name for name in clients if name not in names)
+        rejected: list[str] = []
+        for name in names:
+            client_info: ClientInfo = clients[name]
+            async with twitch.request(
+                "POST",
+                "https://id.twitch.tv/oauth2/device",
+                headers=self._login_headers(client_info),
+                data={"client_id": client_info.CLIENT_ID, "scopes": ""},  # no scopes needed
+            ) as response:
+                # {
+                #     "device_code": "40 chars [A-Za-z0-9]",
+                #     "expires_in": 1800,
+                #     "interval": 5,
+                #     "user_code": "8 chars [A-Z]",
+                #     "verification_uri": "https://www.twitch.tv/activate?device-code=ABCDEFGH"
+                # }
+                try:
+                    response_json: JsonType = await response.json(content_type=None)
+                except json.JSONDecodeError:
+                    response_json = {}
+                status: int = response.status
+            if not isinstance(response_json, dict):
+                response_json = {}
+            try:
+                verification_url = URL(response_json.get("verification_uri", ""))
+            except (TypeError, ValueError):
+                verification_url = URL()
+            if (
+                status == 200
+                and all(
+                    isinstance(response_json.get(key), str) and response_json[key]
+                    for key in ("device_code", "user_code", "verification_uri")
+                )
+                and verification_url.scheme == "https"
+                and verification_url.host == "www.twitch.tv"
+                and type(response_json.get("interval")) is int
+                and response_json["interval"] > 0
+                and type(response_json.get("expires_in")) is int
+                and response_json["expires_in"] > 0
+            ):
+                twitch.set_client_type(name)
+                return response_json
+            reason: str = str(response_json.get("message") or f"HTTP {status}")
+            logger.info(f"Login: Twitch rejected the {name} client: {reason}")
+            rejected.append(f"{name}: {reason}")
+        raise LoginException(
+            "Twitch rejected the login for every known client ("
+            + "; ".join(rejected)
+            + "). The application needs an update."
+        )
+
+    async def _oauth_login(self) -> str:
+        login_form: Any = self._twitch.gui.login
         while True:
             try:
                 now = datetime.now(timezone.utc)
-                async with self._twitch.request(
-                    "POST",
-                    "https://id.twitch.tv/oauth2/device",
-                    headers=headers,
-                    data=payload,
-                ) as response:
-                    # {
-                    #     "device_code": "40 chars [A-Za-z0-9]",
-                    #     "expires_in": 1800,
-                    #     "interval": 5,
-                    #     "user_code": "8 chars [A-Z]",
-                    #     "verification_uri": "https://www.twitch.tv/activate?device-code=ABCDEFGH"
-                    # }
-                    response_json: JsonType = await response.json()
-                    device_code: str = response_json["device_code"]
-                    user_code: str = response_json["user_code"]
-                    interval: int = response_json["interval"]
-                    verification_uri: URL = URL(response_json["verification_uri"])
-                    expires_at = now + timedelta(seconds=response_json["expires_in"])
+                response_json: JsonType = await self._request_device_code()
+                client_info: ClientInfo = self._twitch._client_type
+                if client_info.CLIENT_URL.host != self._device_id_host:
+                    session = await self._twitch.get_session()
+                    await self._fetch_device_id(cast(aiohttp.CookieJar, session.cookie_jar))
+                headers: JsonType = self._login_headers(client_info)
+                device_code: str = response_json["device_code"]
+                user_code: str = response_json["user_code"]
+                interval: int = response_json["interval"]
+                verification_uri: URL = URL(response_json["verification_uri"])
+                expires_at = now + timedelta(seconds=response_json["expires_in"])
 
                 # Print the code to the user, open them the activate page so they can type it in
                 await login_form.ask_enter_code(verification_uri, user_code)
 
                 payload = {
-                    "client_id": self._twitch._client_type.CLIENT_ID,
+                    "client_id": client_info.CLIENT_ID,
                     "device_code": device_code,
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 }
@@ -361,6 +417,51 @@ class _AuthState:
             headers["Authorization"] = f"OAuth {self.access_token}"
         return headers
 
+    async def _fetch_device_id(self, jar: aiohttp.CookieJar) -> None:
+        client_url: URL = self._twitch._client_type.CLIENT_URL
+        async with self._twitch.request("GET", client_url, headers=self.headers()) as response:
+            page_html = await response.text("utf8")
+            assert page_html is not None
+        # doing the request ends up setting the "unique_id" value in the cookie
+        cookie = jar.filter_cookies(client_url)
+        if "unique_id" not in cookie:
+            raise LoginException("Twitch did not provide a device ID")
+        self.device_id = cookie["unique_id"].value
+        self._device_id_host = client_url.host
+
+    def _saved_token(self, jar: aiohttp.CookieJar) -> tuple[str, str] | None:
+        """
+        Finds an auth token saved in the cookies, checking the current client's site first.
+
+        Returns the token and the host it was saved for.
+        """
+        urls: list[URL] = [self._twitch._client_type.CLIENT_URL]
+        for info in ClientType.by_name().values():
+            if info.CLIENT_URL not in urls:
+                urls.append(info.CLIENT_URL)
+        for url in urls:
+            cookie = jar.filter_cookies(url)
+            if "auth-token" in cookie and cookie["auth-token"].value and url.host:
+                return cookie["auth-token"].value, url.host
+        return None
+
+    async def _validate_token(self, token: str) -> JsonType | None:
+        """
+        Returns Twitch's details about the token (user ID, client ID), or None if invalid.
+        """
+        for attempt in range(3):
+            async with self._twitch.request(
+                "GET",
+                "https://id.twitch.tv/oauth2/validate",
+                headers={"Authorization": f"OAuth {token}"},
+            ) as response:
+                if response.status == 401:
+                    return None
+                elif response.status == 200:
+                    return cast("JsonType", await response.json())
+                logger.info(f"Token validation returned HTTP {response.status}")
+        raise RuntimeError("Login verification failure: unexpected validation response")
+
     async def validate(self):
         async with self._lock:
             await self._validate()
@@ -368,68 +469,66 @@ class _AuthState:
     async def _validate(self):
         if not hasattr(self, "session_id"):
             self.session_id = create_nonce(CHARS_HEX_LOWER, 16)
-        session = await self._twitch.get_session()
-        jar = cast(aiohttp.CookieJar, session.cookie_jar)
-        client_info: ClientInfo = self._twitch._client_type
+        if not self._hasattrs("device_id", "access_token", "user_id"):
+            session = await self._twitch.get_session()
+            jar = cast(aiohttp.CookieJar, session.cookie_jar)
         if not self._hasattrs("device_id"):
-            async with self._twitch.request(
-                "GET", client_info.CLIENT_URL, headers=self.headers()
-            ) as response:
-                page_html = await response.text("utf8")
-                assert page_html is not None
-            #     match = re.search(r'twilightBuildID="([-a-z0-9]+)"', page_html)
-            # if match is None:
-            #     raise MinerException("Unable to extract client_version")
-            # self.client_version = match.group(1)
-            # doing the request ends up setting the "unique_id" value in the cookie
-            cookie = jar.filter_cookies(client_info.CLIENT_URL)
-            self.device_id = cookie["unique_id"].value
+            await self._fetch_device_id(jar)
+            self._device_id_host = self._twitch._client_type.CLIENT_URL.host
         if not self._hasattrs("access_token", "user_id"):
             # looks like we're missing something
             login_form: Any = self._twitch.gui.login
             logger.info("Checking login")
             login_form.update(_("gui", "login", "logging_in"), None)
-            for client_mismatch_attempt in range(2):
-                for invalid_token_attempt in range(2):
-                    cookie = jar.filter_cookies(client_info.CLIENT_URL)
-                    if "auth-token" not in cookie:
-                        self.access_token = await self._oauth_login()
-                        cookie["auth-token"] = self.access_token
-                    elif not hasattr(self, "access_token"):
-                        logger.info("Restoring session from cookie")
-                        self.access_token = cookie["auth-token"].value
-                    # validate the auth token, by obtaining user_id
-                    async with self._twitch.request(
-                        "GET",
-                        "https://id.twitch.tv/oauth2/validate",
-                        headers={"Authorization": f"OAuth {self.access_token}"},
-                    ) as response:
-                        if response.status == 401:
-                            # the access token we have is invalid - clear the cookie and reauth
-                            logger.info("Restored session is invalid")
-                            assert client_info.CLIENT_URL.host is not None
-                            jar.clear_domain(client_info.CLIENT_URL.host)
-                            continue
-                        elif response.status == 200:
-                            validate_response = await response.json()
-                            break
+            validate_response: JsonType | None = None
+            for attempt in range(3):
+                saved_host: str | None = None
+                if hasattr(self, "access_token"):
+                    pass
+                elif (saved := self._saved_token(jar)) is not None:
+                    logger.info("Restoring session from cookie")
+                    self.access_token, saved_host = saved
                 else:
-                    raise RuntimeError("Login verification failure (step #2)")
-                # ensure the cookie's client ID matches the currently selected client
-                if validate_response["client_id"] == client_info.CLIENT_ID:
-                    break
-                # otherwise, we need to delete the entire cookie file and clear the jar
-                logger.info("Cookie client ID mismatch")
-                jar.clear()
-                COOKIES_PATH.unlink(missing_ok=True)
-            else:
-                raise RuntimeError("Login verification failure (step #1)")
+                    self.access_token = await self._oauth_login()
+                validate_response = await self._validate_token(self.access_token)
+                if validate_response is None:
+                    # the access token we have is invalid - forget it and login again
+                    logger.info("Restored session is invalid")
+                    self._delattrs("access_token")
+                    if saved_host is not None:
+                        jar.clear_domain(saved_host)
+                    continue
+                # use the client the token was issued for - an older login made with a
+                # client Twitch doesn't accept for new logins anymore can still be valid
+                client_id: str = validate_response["client_id"]
+                for name, info in ClientType.by_name().items():
+                    if info.CLIENT_ID == client_id:
+                        self._twitch.set_client_type(name)
+                        if info.CLIENT_URL.host != self._device_id_host:
+                            # the device ID cookie is per site, get the one of the new client
+                            await self._fetch_device_id(jar)
+                            self._device_id_host = info.CLIENT_URL.host
+                        break
+                else:
+                    # a token of a client we don't know - start over from scratch
+                    logger.info("Cookie client ID mismatch")
+                    self._delattrs("access_token")
+                    jar.clear()
+                    COOKIES_PATH.unlink(missing_ok=True)
+                    validate_response = None
+                    continue
+                break
+            if validate_response is None:
+                raise RuntimeError("Login verification failure")
             self.user_id = int(validate_response["user_id"])
+            client_url: URL = self._twitch._client_type.CLIENT_URL
+            cookie = jar.filter_cookies(client_url)
+            cookie["auth-token"] = self.access_token
             cookie["persistent"] = str(self.user_id)
             logger.info(f"Login successful, user ID: {self.user_id}")
             login_form.update(_("gui", "login", "logged_in"), self.user_id)
             # update our cookie and save it
-            jar.update_cookies(cookie, client_info.CLIENT_URL)
+            jar.update_cookies(cookie, client_url)
             jar.save(COOKIES_PATH)
         self._twitch.gui.help._invalidate_button.config(state="normal")
         self._logged_in.set()
@@ -450,7 +549,13 @@ class Twitch:
         # Do not modify the default, safe values.
         self._qgl_limiter = RateLimiter(capacity=5, window=1)
         # Client type, session and auth
-        self._client_type: ClientInfo = ClientType.SMARTBOX
+        clients = ClientType.by_name()
+        self.client_type_name = settings.client_type
+        if self.client_type_name not in clients:
+            logger.warning("Unknown saved Twitch client; using %s", DEFAULT_CLIENT_TYPE)
+            self.client_type_name = DEFAULT_CLIENT_TYPE
+            settings.client_type = self.client_type_name
+        self._client_type: ClientInfo = clients[self.client_type_name]
         self._session: aiohttp.ClientSession | None = None
         self._auth_state: _AuthState = _AuthState(self)
         self.gui = WebGUIManager(self)
@@ -463,6 +568,16 @@ class Twitch:
         self.websocket = WebsocketPool(self)
         # Maintenance task
         self._mnt_task: asyncio.Task[None] | None = None
+
+    def set_client_type(self, name: str) -> None:
+        self._client_type = ClientType.by_name()[name]
+        self.client_type_name = name
+        if self._session is not None:
+            self._session.headers["User-Agent"] = self._client_type.USER_AGENT
+        if self.settings.client_type != name:
+            logger.info("Switching the Twitch client to %s", name)
+            self.settings.client_type = name
+            self.settings.save()
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -791,7 +906,9 @@ class Twitch:
                 for game in no_acl:
                     # for every campaign without an ACL, for it's game,
                     # add a list of live channels with drops enabled
-                    new_channels.update(await self.get_live_streams(game, drops_enabled=True))
+                    game_channels = await self.get_live_streams(game, drops_enabled=True)
+                    await self.check_available_drops(game_channels)
+                    new_channels.update(game_channels)
                 # sort them descending by viewers, by priority and by game priority
                 # NOTE: Viewers sort also ensures ONLINE channels are sorted to the top
                 # NOTE: We can drop using the set now, because there's no more channels being added
@@ -1386,13 +1503,11 @@ class Twitch:
                                     data_dict = data_dict[key]
                                 data_dict[path[-1]] = None
                                 break
-                            elif (
-                                error_dict["message"] in (
-                                    "service timeout",
-                                    "request cancelled",
-                                    "service unavailable",
-                                    "context deadline exceeded",
-                                )
+                            elif error_dict["message"] in (
+                                "service timeout",
+                                "request cancelled",
+                                "service unavailable",
+                                "context deadline exceeded",
                             ):
                                 force_retry = True
                                 break
@@ -1433,19 +1548,25 @@ class Twitch:
     ) -> dict[str, JsonType]:
         campaign_ids: dict[str, JsonType] = dict(campaigns_chunk)
         auth_state = await self.get_auth()
-        response_list: list[JsonType] = await self.gql_request(
-            [
-                GQL_QUERIES["CampaignDetails"].with_variables(
-                    {"channelLogin": str(auth_state.user_id), "dropID": cid}
-                )
-                for cid in campaign_ids
-            ]
-        )
-        fetched_data: dict[str, JsonType] = {
-            campaign_data["id"]: campaign_data
-            for response_json in response_list
-            if (campaign_data := response_json["data"]["user"]["dropCampaign"]) is not None
-        }
+        try:
+            response_list: list[JsonType] = await self.gql_request(
+                [
+                    GQL_QUERIES["CampaignDetails"].with_variables(
+                        {"channelLogin": str(auth_state.user_id), "dropID": cid}
+                    )
+                    for cid in campaign_ids
+                ]
+            )
+        except GQLException as exc:
+            # Inventory data remains usable when Twitch refuses campaign details.
+            logger.warning(f"Unable to fetch the campaign details: {exc}")
+            return {}
+        fetched_data: dict[str, JsonType] = {}
+        for response_json in response_list:
+            user_data: JsonType | None = (response_json.get("data") or {}).get("user")
+            campaign_data: JsonType | None = user_data and user_data.get("dropCampaign")
+            if campaign_data:
+                fetched_data[campaign_data["id"]] = campaign_data
         campaign_ids = {cid: campaign_ids[cid] for cid in fetched_data}
         return self._merge_data(campaign_ids, fetched_data)
 
@@ -1462,8 +1583,15 @@ class Twitch:
         }
         inventory_data: dict[str, JsonType] = {c["id"]: c for c in ongoing_campaigns}
         # fetch general available campaigns data (campaigns)
-        response = await self.gql_request(GQL_QUERIES["Campaigns"])
-        available_list: list[JsonType] = response["data"]["currentUser"]["dropCampaigns"] or []
+        available_list: list[JsonType] = []
+        try:
+            response = await self.gql_request(GQL_QUERIES["Campaigns"])
+        except GQLException as exc:
+            logger.warning("Unable to fetch the campaigns list: %s", exc)
+        else:
+            current_user = (response.get("data") or {}).get("currentUser")
+            if current_user:
+                available_list = current_user.get("dropCampaigns") or []
         applicable_statuses = ("ACTIVE", "UPCOMING")
         available_campaigns: dict[str, JsonType] = {
             c["id"]: c
@@ -1486,9 +1614,13 @@ class Twitch:
             for task in fetch_campaigns_tasks:
                 task.cancel()
             raise
+        if self.settings.campaign_discovery:
+            discovered = await self.discover_campaigns(inventory_data)
+            for campaign_id, campaign_data in discovered.items():
+                inventory_data.setdefault(campaign_id, campaign_data)
         # filter out invalid campaigns
         for campaign_id in list(inventory_data.keys()):
-            if inventory_data[campaign_id]["game"] is None:
+            if inventory_data[campaign_id].get("game") is None:
                 del inventory_data[campaign_id]
 
         if self.settings.dump:
@@ -1522,10 +1654,16 @@ class Twitch:
                 )
 
         # use the merged data to create campaign objects
-        campaigns: list[DropsCampaign] = [
-            DropsCampaign(self, campaign_data, claimed_benefits)
-            for campaign_data in inventory_data.values()
-        ]
+        campaigns: list[DropsCampaign] = []
+        for campaign_data in inventory_data.values():
+            try:
+                campaign = DropsCampaign(self, campaign_data, claimed_benefits)
+                if not campaign.timed_drops:
+                    raise ValueError("no timed drops")
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning("Skipping malformed campaign %s: %s", campaign_data.get("id"), exc)
+                continue
+            campaigns.append(campaign)
         campaigns.sort(key=lambda c: c.active, reverse=True)
         campaigns.sort(key=lambda c: c.upcoming and c.starts_at or c.ends_at)
         campaigns.sort(key=lambda c: c.eligible, reverse=True)
@@ -1533,6 +1671,7 @@ class Twitch:
         self._drops.clear()
         self.gui.inv.clear()
         self.inventory.clear()
+        self._campaigns.clear()
         self._mnt_triggers.clear()
         switch_triggers: set[datetime] = set()
         next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -1609,7 +1748,7 @@ class Twitch:
             )
         except GQLException as exc:
             raise MinerException(f"Game: {game.slug}") from exc
-        if "game" in response["data"]:
+        if (response.get("data") or {}).get("game"):
             return [
                 Channel.from_directory(
                     self, stream_channel_data["node"], drops_enabled=drops_enabled
@@ -1619,11 +1758,209 @@ class Twitch:
             ]
         return []
 
+    async def fetch_available_drops(
+        self, channel_ids: abc.Iterable[int]
+    ) -> dict[int, list[JsonType]]:
+        available: dict[int, list[JsonType]] = {}
+        ops = [
+            GQL_QUERIES["AvailableDrops"].with_variables({"channelID": str(channel_id)})
+            for channel_id in channel_ids
+        ]
+        for ops_chunk in chunk(ops, 20):
+            try:
+                responses = await self.gql_request(ops_chunk)
+            except GQLException as exc:
+                logger.warning("Available drops: a batch of channels failed: %s", exc)
+                continue
+            for response in responses:
+                channel_data = (response.get("data") or {}).get("channel")
+                if channel_data and channel_data.get("id"):
+                    available[int(channel_data["id"])] = (
+                        channel_data.get("viewerDropCampaigns") or []
+                    )
+        return available
+
+    async def check_available_drops(self, channels: list[Channel]) -> None:
+        if not (self.settings.available_drops_check or self.settings.campaign_discovery):
+            return
+        online = [channel for channel in channels if channel.online]
+        available = await self.fetch_available_drops(channel.id for channel in online)
+        if online and not any(available.values()):
+            logger.warning("No channel reports available drops; retaining channel eligibility")
+            return
+        for channel in online:
+            # An unanswered channel is unknown, not an explicit negative response.
+            if channel.id in available:
+                channel.update_available_drops(available[channel.id])
+
+    def _campaign_from_available(
+        self, data: JsonType, known: dict[str, JsonType], skipped: dict[str, int]
+    ) -> JsonType | None:
+        game = data.get("game")
+        if not game or not game.get("id"):
+            skipped["no game"] = skipped.get("no game", 0) + 1
+            return None
+        game_id = str(int(game["id"]))
+        game_name = game.get("displayName") or game.get("name")
+        if not isinstance(game_name, str) or not game_name or int(game_id) <= 0:
+            raise ValueError("invalid game")
+        game_name = next(
+            (name for name in self.settings.priority if name.casefold() == game_name.casefold()),
+            game_name,
+        )
+        image = f"https://static-cdn.jtvnw.net/ttv-boxart/{game_id}_IGDB-285x380.jpg"
+        campaign_name = data.get("name") or game_name
+        campaign_start = data.get("startAt") or datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        campaign_end = data.get("endAt")
+        timestamp(campaign_start)
+        if campaign_end:
+            timestamp(campaign_end)
+        drops: dict[str, JsonType] = {}
+        for drop in data.get("timeBasedDrops") or []:
+            try:
+                minutes = drop.get("requiredMinutesWatched")
+                if not drop.get("id") or type(minutes) is not int or minutes <= 0:
+                    raise ValueError("no watch time")
+                if drop.get("requiredSubs"):
+                    raise ValueError("subscription required")
+                start = drop.get("startAt") or campaign_start
+                end = drop.get("endAt") or campaign_end
+                if not end or timestamp(start) >= timestamp(end):
+                    raise ValueError("invalid drop dates")
+                name = drop.get("name") or campaign_name
+                benefits = []
+                for edge in drop.get("benefitEdges") or []:
+                    benefit = dict(edge.get("benefit") or {})
+                    if not benefit.get("id"):
+                        continue
+                    benefit["name"] = benefit.get("name") or name
+                    benefit["distributionType"] = benefit.get("distributionType") or "UNKNOWN"
+                    benefit["imageAssetURL"] = benefit.get("imageAssetURL") or image
+                    benefits.append({**edge, "benefit": benefit})
+                prerequisites = [
+                    {"id": str(item["id"])} for item in drop.get("preconditionDrops") or []
+                ]
+                drops[str(drop["id"])] = {
+                    "id": str(drop["id"]),
+                    "name": name,
+                    "startAt": start,
+                    "endAt": end,
+                    "requiredMinutesWatched": minutes,
+                    "preconditionDrops": prerequisites,
+                    "benefitEdges": benefits,
+                }
+            except (KeyError, TypeError, ValueError, AttributeError):
+                skipped["unusable drop"] = skipped.get("unusable drop", 0) + 1
+        # Keep only complete, acyclic prerequisite chains after unusable drops were removed.
+        valid: set[str] = set()
+        while ready := {
+            did
+            for did, drop in drops.items()
+            if did not in valid and all(item["id"] in valid for item in drop["preconditionDrops"])
+        }:
+            valid.update(ready)
+        usable = [drop for did, drop in drops.items() if did in valid]
+        if not usable:
+            skipped["no usable drops"] = skipped.get("no usable drops", 0) + 1
+            return None
+        linked = (data.get("self") or {}).get("isAccountConnected", True)
+        for previous in known.values():
+            previous_game = previous.get("game") or {}
+            if str(previous_game.get("id")) == game_id and previous.get("self"):
+                linked = previous["self"].get("isAccountConnected", linked)
+                break
+        return {
+            "id": str(data["id"]),
+            "name": campaign_name,
+            "game": {
+                **game,
+                "id": game_id,
+                "name": game_name,
+                "displayName": game_name,
+                "boxArtURL": image,
+            },
+            "self": {"isAccountConnected": linked},
+            "accountLinkURL": data.get("detailsURL") or "",
+            "startAt": min((drop["startAt"] for drop in usable), key=timestamp),
+            "endAt": campaign_end or max((drop["endAt"] for drop in usable), key=timestamp),
+            "status": "ACTIVE",
+            "allow": {"channels": [], "isEnabled": True},
+            "timeBasedDrops": usable,
+        }
+
+    async def discover_campaigns(self, known: dict[str, JsonType]) -> dict[str, JsonType]:
+        excluded = {name.casefold() for name in self.settings.exclude}
+        games = {name.casefold(): Game({"id": 0, "name": name}) for name in self.settings.priority}
+        for data in known.values():
+            if data.get("game"):
+                try:
+                    game = Game(data["game"])
+                except (KeyError, TypeError, ValueError):
+                    logger.warning("Campaign discovery: ignoring a malformed inventory game")
+                    continue
+                games.setdefault(game.name.casefold(), game)
+        games = {name: game for name, game in games.items() if name not in excluded}
+        channels: dict[int, Channel] = {}
+        # shortcut: discovery searches selected/known games, add a global scan for wider coverage.
+        for game in list(games.values())[:DISCOVERY_MAX_GAMES]:
+            try:
+                live = await self.get_live_streams(game, limit=DISCOVERY_CHANNELS_PER_GAME)
+            except MinerException as exc:
+                if isinstance(exc, (ExitRequest, ReloadRequest)):
+                    raise
+                logger.warning("Campaign discovery: unable to fetch %s: %s", game.name, exc)
+                continue
+            channels.update((channel.id, channel) for channel in live)
+        available = await self.fetch_available_drops(channels)
+        discovered: dict[str, JsonType] = {}
+        skipped: dict[str, int] = {}
+        for channel_id, campaigns in available.items():
+            if channel_id not in channels:
+                continue
+            for data in campaigns:
+                if not isinstance(data, dict):
+                    skipped["malformed campaign"] = skipped.get("malformed campaign", 0) + 1
+                    continue
+                campaign_id = data.get("id")
+                if not campaign_id or campaign_id in known:
+                    continue
+                if campaign_id not in discovered:
+                    try:
+                        converted = self._campaign_from_available(data, known, skipped)
+                    except (KeyError, TypeError, ValueError, AttributeError):
+                        skipped["malformed campaign"] = skipped.get("malformed campaign", 0) + 1
+                        continue
+                    if converted is None:
+                        continue
+                    if converted["game"]["name"].casefold() in excluded:
+                        continue
+                    discovered[campaign_id] = converted
+                channel = channels[channel_id]
+                discovered[campaign_id]["allow"]["channels"].append(
+                    {
+                        "id": str(channel.id),
+                        "name": channel._login,
+                        "displayName": channel.name,
+                    }
+                )
+        summary = (
+            f"{len(discovered)} campaign(s) of "
+            f"{len({data['game']['id'] for data in discovered.values()})} game(s); "
+            f"asked {len(channels)} channel(s), {len(available)} answered, "
+            f"{sum(bool(drops) for drops in available.values())} with drops; skipped {skipped}"
+        )
+        logger.info("Campaign discovery: %s", summary)
+        self.print(f"Drops scan: {summary}")
+        return discovered
+
     async def bulk_check_online(self, channels: abc.Iterable[Channel]):
         """
         Utilize batch GQL requests to check ONLINE status for a lot of channels at once.
         Also handles the drops_enabled check (if enabled).
         """
+        channels = list(channels)
         acl_streams_map: dict[int, JsonType] = {}
         stream_gql_ops: list[GQLOperation] = [channel.stream_gql for channel in channels]
         if not stream_gql_ops:
@@ -1646,37 +1983,7 @@ class Twitch:
             for task in stream_gql_tasks:
                 task.cancel()
             raise
-        # for all channels with an active stream, check the available drops as well
-        acl_available_drops_map: dict[int, list[JsonType]] = {}
-        if self.settings.available_drops_check:
-            available_gql_ops: list[GQLOperation] = [
-                GQL_QUERIES["AvailableDrops"].with_variables({"channelID": str(channel_id)})
-                for channel_id, channel_data in acl_streams_map.items()
-                if channel_data["stream"] is not None  # only do this for ONLINE channels
-            ]
-            available_gql_tasks: list[asyncio.Task[list[JsonType]]] = [
-                asyncio.create_task(self.gql_request(available_gql_chunk))
-                for available_gql_chunk in chunk(available_gql_ops, 20)
-            ]
-            try:
-                for coro in asyncio.as_completed(available_gql_tasks):
-                    response_list = await coro
-                    for response_json in response_list:
-                        available_info: JsonType = response_json["data"]["channel"]
-                        acl_available_drops_map[int(available_info["id"])] = (
-                            available_info["viewerDropCampaigns"] or []
-                        )
-            except Exception:
-                # asyncio.as_completed doesn't cancel tasks on errors
-                for task in available_gql_tasks:
-                    task.cancel()
-                raise
         for channel in channels:
-            channel_id = channel.id
-            if channel_id not in acl_streams_map:
-                continue
-            channel_data = acl_streams_map[channel_id]
-            if channel_data["stream"] is None:
-                continue
-            available_drops: list[JsonType] = acl_available_drops_map.get(channel_id, [])
-            channel.external_update(channel_data, available_drops)
+            if channel.id in acl_streams_map:
+                channel.external_update(acl_streams_map[channel.id])
+        await self.check_available_drops(channels)
